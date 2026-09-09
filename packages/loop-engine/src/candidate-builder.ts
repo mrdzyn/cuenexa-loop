@@ -1,18 +1,20 @@
 import type { LoopConversation, LoopFact, LoopTodo } from "@cuenexa-loop/contracts";
+import type { CompletionSignal } from "./completion.js";
 import { CONFIDENCE } from "./confidence.js";
 import { extractDeadline } from "./deadline.js";
 import { detectSentence } from "./detectors/index.js";
 import { FOLLOW_UP_VERB_PATTERN } from "./detectors/patterns.js";
 import type { DetectorMatch } from "./detectors/types.js";
+import { suppressResolvedOpenQuestions } from "./question-resolution.js";
 import { capitalizeFirst, escapeRegExp, splitSentences, stripTrailingPunctuation } from "./text-utils.js";
-import type { DetectionCandidate, DetectionWarning, LoopItemType, LoopSource } from "./types.js";
+import type { DetectionCandidate, DetectionContext, DetectionWarning, LoopItemType, LoopSource } from "./types.js";
 
 /** Text-derived types get their trailing deadline phrase stripped from the display text (see attachDeadline). */
 const DEADLINE_STRIPPABLE_TYPES = new Set<LoopItemType>(["commitment", "follow_up"]);
 
 export function candidatesFromConversation(
   conversation: LoopConversation,
-  now: string,
+  context: DetectionContext,
   warnings: DetectionWarning[],
 ): DetectionCandidate[] {
   const candidates: DetectionCandidate[] = [];
@@ -41,7 +43,7 @@ export function candidatesFromConversation(
       };
 
       candidates.push(
-        finalizeCandidate(match, sentence, now, source, {
+        finalizeCandidate(match, sentence, context, source, {
           type: "utterance",
           sourceId: conversation.id,
           text: sentence,
@@ -50,10 +52,17 @@ export function candidatesFromConversation(
     }
   });
 
-  return candidates;
+  // Same-conversation, bounded-window resolution: an open question
+  // answered later in this same conversation is suppressed rather than
+  // surfaced as still-unresolved. Never looks outside this conversation.
+  return suppressResolvedOpenQuestions(candidates, conversation.utterances);
 }
 
-export function candidatesFromFact(fact: LoopFact, now: string, warnings: DetectionWarning[]): DetectionCandidate[] {
+export function candidatesFromFact(
+  fact: LoopFact,
+  context: DetectionContext,
+  warnings: DetectionWarning[],
+): DetectionCandidate[] {
   if (!fact.text || fact.text.trim().length === 0) {
     warnings.push({ field: "fact", message: `Skipped empty fact text for fact ${fact.id}.` });
     return [];
@@ -75,7 +84,7 @@ export function candidatesFromFact(fact: LoopFact, now: string, warnings: Detect
       utteranceIndexes: [],
     };
 
-    candidates.push(finalizeCandidate(match, sentence, now, source, { type: "fact", sourceId: fact.id, text: sentence }));
+    candidates.push(finalizeCandidate(match, sentence, context, source, { type: "fact", sourceId: fact.id, text: sentence }));
   }
 
   return candidates;
@@ -85,16 +94,18 @@ export function candidatesFromFact(fact: LoopFact, now: string, warnings: Detect
  * Bee Todos are treated as high-confidence actionable evidence and
  * (almost) always produce a candidate, rather than being subject to the
  * same pattern-matching gate as conversation/fact text — a todo is
- * inherently action-shaped by construction. Only genuinely empty text or
- * a non-open status (completed/unknown) suppresses one, since Phase 1A's
- * purpose is surfacing what remains *unfinished*.
+ * inherently action-shaped by construction. Only genuinely empty text
+ * suppresses one. Only call this for `status === "open"` todos — a
+ * completed todo is a completion *signal* instead (see
+ * `completionSignalFromTodo`), never a candidate of its own.
  */
-export function candidateFromTodo(todo: LoopTodo, now: string, warnings: DetectionWarning[]): DetectionCandidate | null {
+export function candidateFromTodo(
+  todo: LoopTodo,
+  context: DetectionContext,
+  warnings: DetectionWarning[],
+): DetectionCandidate | null {
   if (!todo.text || todo.text.trim().length === 0) {
     warnings.push({ field: "todo", message: `Skipped empty todo text for todo ${todo.id}.` });
-    return null;
-  }
-  if (todo.status !== "open") {
     return null;
   }
 
@@ -103,7 +114,7 @@ export function candidateFromTodo(todo: LoopTodo, now: string, warnings: Detecti
   const type: LoopItemType = isFollowUp ? "follow_up" : "commitment";
 
   // Bee's own `dueAt` (already resolved during Phase 0 normalization) is preferred over re-parsing the todo text.
-  const textExtraction = extractDeadline(sentence, now);
+  const textExtraction = extractDeadline(sentence, context.now, context.timeZone);
   const dueAt = todo.dueAt ?? textExtraction?.dueAt ?? null;
   const dueAtPhrase = textExtraction?.phrase ?? null;
   const text = dueAtPhrase && DEADLINE_STRIPPABLE_TYPES.has(type) ? stripDeadlinePhrase(sentence, dueAtPhrase) : sentence;
@@ -121,14 +132,28 @@ export function candidateFromTodo(todo: LoopTodo, now: string, warnings: Detecti
   };
 }
 
+/**
+ * A completed Bee Todo never becomes a Loop item itself — it becomes a
+ * completion signal, used only to suppress a matching still-open
+ * candidate elsewhere (see `completion.ts`). Only call this for
+ * `status === "completed"` todos.
+ */
+export function completionSignalFromTodo(todo: LoopTodo, warnings: DetectionWarning[]): CompletionSignal | null {
+  if (!todo.text || todo.text.trim().length === 0) {
+    warnings.push({ field: "todo", message: `Skipped empty completed-todo text for todo ${todo.id}.` });
+    return null;
+  }
+  return { todoId: todo.id, text: todo.text };
+}
+
 function finalizeCandidate(
   match: DetectorMatch,
   sentence: string,
-  now: string,
+  context: DetectionContext,
   source: LoopSource,
   evidence: { type: "utterance" | "fact" | "todo"; sourceId: string | null; text: string },
 ): DetectionCandidate {
-  const extraction = extractDeadline(sentence, now);
+  const extraction = extractDeadline(sentence, context.now, context.timeZone);
   const dueAt = extraction?.dueAt ?? null;
   const dueAtPhrase = extraction?.phrase ?? null;
   const text = dueAtPhrase && DEADLINE_STRIPPABLE_TYPES.has(match.type) ? stripDeadlinePhrase(match.text, dueAtPhrase) : match.text;

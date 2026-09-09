@@ -157,11 +157,21 @@ Private content printed: NO
 Same privacy split as `bee:check`: the default output never contains an
 item's text, owner, or evidence — see [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
 
+Unlike `bee:check` (list-only, counts only), `loops:check` fetches each
+conversation's **full detail** (not just the list summary) so
+conversation-derived detection has real utterance text to work with — see
+[docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md#full-conversation-hydration-bee-check-vs-loops-check).
+Calendar phrases ("today", "tomorrow", weekday names) resolve against an
+explicit `LOOP_TIMEZONE` override if you set one, otherwise Bee's own
+account time zone when available, otherwise your local system time zone
+— never UTC by default.
+
 ## Configuration
 
 | Env var          | Default | Purpose                                                              |
 | ----------------- | ------- | ---------------------------------------------------------------------- |
-| `LOOP_MAX_ITEMS`  | `5`     | Max conversations/facts/todos printed per category in `--include-content` mode. |
+| `LOOP_MAX_ITEMS`  | `5`     | Max conversations/facts/todos/Loop items printed per category in `--include-content` mode. |
+| `LOOP_TIMEZONE`   | (Bee's account time zone, else local system time zone) | IANA time zone override for resolving calendar phrases ("today", "tomorrow", weekday names) in `loops:check`. |
 
 ## Development
 

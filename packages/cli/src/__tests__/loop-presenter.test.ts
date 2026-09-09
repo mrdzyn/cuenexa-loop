@@ -50,7 +50,7 @@ const SENSITIVE_CONVERSATION = makeConversation([
 describe("renderLoopConnectivityReport (default, mandatory privacy-by-default output)", () => {
   it("contains none of the source conversation's text content", () => {
     const snapshot = makeSnapshot({ conversations: [SENSITIVE_CONVERSATION] });
-    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopConnectivityReport(snapshot, result);
 
@@ -61,7 +61,7 @@ describe("renderLoopConnectivityReport (default, mandatory privacy-by-default ou
 
   it("reports structural counts by type, plus a cross-cutting deadline count", () => {
     const snapshot = makeSnapshot({ conversations: [SENSITIVE_CONVERSATION] });
-    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopConnectivityReport(snapshot, result);
 
@@ -76,7 +76,7 @@ describe("renderLoopConnectivityReport (default, mandatory privacy-by-default ou
 
   it("reports zero counts for an empty snapshot without throwing", () => {
     const snapshot = makeSnapshot();
-    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopConnectivityReport(snapshot, result);
 
@@ -87,7 +87,7 @@ describe("renderLoopConnectivityReport (default, mandatory privacy-by-default ou
 describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
   it("does print item text and evidence, unlike the default report", () => {
     const config = loadConfig({});
-    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 
@@ -98,7 +98,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
   it("redacts an email address inside evidence text", () => {
     const config = loadConfig({});
     const conversation = makeConversation(["I'll send it to jordan@example.com tomorrow."]);
-    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 
@@ -109,7 +109,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
   it("shows a resolved due date and an owner label where present", () => {
     const config = loadConfig({});
     const conversation = makeConversation(["Alex, please prepare the report by Friday."]);
-    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 
@@ -124,7 +124,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
       "I'll send the invoice tomorrow.",
       "I'll send the contract tomorrow.",
     ]);
-    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 
@@ -134,7 +134,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
   it("surfaces detection warnings without leaking source text", () => {
     const config = loadConfig({});
     const conversation = makeConversation(["", "I'll send the revised proposal tomorrow."]);
-    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 
@@ -143,7 +143,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
 
   it("states plainly that nothing was persisted", () => {
     const config = loadConfig({});
-    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW });
+    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
     const report = renderLoopContentReport(result, config);
 

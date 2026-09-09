@@ -12,7 +12,7 @@ yet group related items across conversations into a persistent "Loop"
 
 ```text
 Bee
-  ↓
+  ↓  conversations.list() + conversations.get(id) hydration — see "Full conversation hydration"
 Bee Adapter
   ↓
 Normalized CueNexa Contracts (LoopConversation / LoopFact / LoopTodo)
@@ -36,6 +36,51 @@ whichever other item type it belongs to, not as a standalone item. The
 `dueAt`, cross-cutting all types, not a count of `type === "deadline"`
 items. See "Deadline resolution" below.
 
+## Full conversation hydration: `bee:check` vs. `loops:check`
+
+Bee's `conversations.list()` endpoint returns **summary-only** records —
+verified against a live account: no nested `transcriptions[]` at all, only
+`id`, timestamps, summary text, and location. Only
+`conversations.get(id)` returns the full detail with
+`transcriptions[].utterances[]`. This matters a great deal for detection:
+without fetching that detail, every `LoopConversation.utterances` array
+normalizes to empty, and conversation-derived detection can never fire —
+only Bee Todos and Facts would ever produce items, silently.
+
+Two functions in `@cuenexa-loop/bee-adapter` reflect this:
+
+- **`fetchBeeSnapshot`** — list-only. Used by `npm run bee:check`, which
+  only needs counts for a connectivity check, not conversation content.
+- **`fetchDetectionSnapshot`** — additionally hydrates each listed
+  conversation's full detail via `conversations.get(id)`. Used by
+  `npm run loops:check`, since Loop detection is meaningless without
+  actual utterance text.
+
+Hydration (`packages/bee-adapter/src/service.ts`) is:
+
+- **Per-conversation and non-fatal.** A conversation whose detail fetch
+  fails (throws, or returns nothing) falls back to its list-summary data
+  — included in the snapshot with empty utterances, plus a warning
+  explaining why — rather than being dropped or aborting the whole
+  snapshot.
+- **Bounded-concurrency**, not serial or unbounded-parallel — at most 4
+  concurrent `conversations.get(id)` calls by default (configurable via
+  `fetchDetectionSnapshot`'s `concurrency` option), via a small
+  dependency-free `mapWithConcurrency` helper.
+- **Content-silent in its warnings.** A hydration warning names the
+  conversation id and a generic reason; it never includes summary or
+  transcript text.
+- **Pagination-preserving.** The `next_cursor` from the original
+  `conversations.list()` call is carried through unchanged —
+  hydration only affects each already-listed conversation's detail, not
+  which page of conversations was fetched.
+
+See the orchestration test in `packages/cli/src/__tests__/
+detection-orchestration.test.ts` (a fake Bee client whose `list()` returns
+a summary-only conversation and whose `get(id)` returns the same
+conversation with real utterances) and the hydration-mechanics tests in
+`packages/bee-adapter/src/__tests__/service.test.ts`.
+
 ## Detection philosophy: precision over recall
 
 CueNexa Loop is not a meeting summarizer or a generic todo app — its
@@ -52,8 +97,8 @@ commitment than to create a misleading one.** Concretely, this means:
   should consider") suppresses an otherwise-matching commitment or
   decision entirely, rather than lowering its confidence — a hedge means
   "this isn't firm," not "this is a slightly-less-firm commitment."
-- An explicit first-person negation ("I won't...", "I will not...")
-  suppresses a commitment entirely.
+- An explicit negation suppresses a commitment, follow-up, or delegation
+  entirely — see "Negation" below for exactly which forms.
 - Bee Facts are conservative by design: a fact only becomes a Loop item
   when the fact text itself matches one of the same structural detectors
   used for conversation text (an explicit question, decision, etc.) — a
@@ -67,11 +112,17 @@ commitment than to create a misleading one.** Concretely, this means:
 ## Candidate → validation → LoopItem pipeline
 
 ```text
-Source text (utterance / fact / Bee Todo)
-  ↓  detectSentence() — one detector wins per sentence (see "Precedence")
-DetectionCandidate  (unvalidated: type, text, confidence, owner, dueAt, evidence)
+Per conversation:
+  utterances → detectSentence() per sentence (see "Precedence") → candidates
+    → suppressResolvedOpenQuestions() — drops questions answered later in the *same* conversation
+
+Facts, open Bee Todos: candidates directly (no per-conversation step)
+Completed Bee Todos: CompletionSignal (never becomes a candidate or a LoopItem)
+
+All candidates
   ↓  deduplicateCandidates()
 Deduplicated candidates
+  ↓  reconcileCompletions() — drops candidates a completed Todo's CompletionSignal matches
   ↓  confidence filter (SUPPRESSION_THRESHOLD)
   ↓  LoopItemSchema.parse()
 LoopItem[]  (validated, id-assigned, state: "open")
@@ -114,6 +165,34 @@ All Phase 1A detectors use fixed, named constants from `confidence.ts` —
 there is no scattered magic-number tuning per detector. `SUPPRESSION_THRESHOLD`
 (0.70) is applied once, centrally, in `engine.ts`, after deduplication.
 
+## Negation
+
+`packages/loop-engine/src/negation.ts` covers, for a given subject, a
+modal-verb negation with an allowed short adverbial gap: `<subject>
+won't...`, `<subject> will not...`, `<subject> will <=2 words> not...`
+(e.g. "will definitely not"), and `<subject> will never...`. This is
+applied to:
+
+- **First-person commitments and follow-ups** ("I will never send the
+  proposal.", "I will definitely not send the proposal.", "I will never
+  follow up with the vendor.") — `hasCommitmentNegation` is checked first
+  in both `detectCommitment` and `detectFollowUp`, so a negated sentence
+  is suppressed before either detector's positive pattern is even
+  consulted.
+- **Third-person delegation** ("Sarah will not prepare the report.") —
+  `detectDelegation`'s third-person-"will" pattern now also captures the
+  text immediately following "will" and checks it for a negated
+  continuation (`isNegatedContinuation`) before treating the sentence as
+  an assignment of responsibility; without this, "Sarah will not prepare
+  the report" would otherwise read as delegating exactly the opposite of
+  what was said.
+
+This stays a narrow, deterministic pattern — not general NLP negation —
+by design; the two-word gap cap exists specifically so it doesn't drift
+into open-ended negation-scope detection. See "Limitations" for the
+known false-positive this accepts as a tradeoff ("not only X but also
+Y").
+
 ## Deduplication
 
 Deduplication is **within-snapshot only, deterministic, and
@@ -147,6 +226,29 @@ conversations never merge, even with identical text; a todo or fact
 (no `conversationId` of its own) can still merge with a
 conversation-sourced candidate. See `eligibleToMerge` in `dedup.ts`.
 
+## Completion reconciliation
+
+CueNexa Loop's purpose is surfacing what remains *unfinished*. Without
+reconciliation, a completed Bee Todo and its matching conversation
+commitment would disagree: the todo says done, but the conversation-
+derived candidate has no way to know that, and would still surface as an
+open item. `packages/loop-engine/src/completion.ts` fixes this:
+
+- A **completed** Bee Todo never becomes a candidate or a `LoopItem`
+  itself — it becomes a `CompletionSignal` (just its text and todo id),
+  used only to check other candidates against.
+- `reconcileCompletions`, run after deduplication, drops any candidate
+  whose evidence text conservatively matches (same 0.7 Jaccard threshold
+  and comparison approach as deduplication itself — this is the same
+  "same action?" judgment, just against a completion signal instead of
+  another open candidate) a completion signal's text.
+- An unrelated completed todo never affects an unrelated open candidate:
+  "Send the estimate tomorrow." (completed) does not suppress "I'll send
+  the *invoice* tomorrow." (open) — these measure ~0.4 similarity,
+  comfortably below the 0.7 threshold. See the "completion reconciliation"
+  tests in `__tests__/engine.test.ts`, which cover both the audit's
+  required cases exactly.
+
 ## Deadline resolution
 
 `packages/loop-engine/src/deadline.ts` is a small, isolated temporal
@@ -165,6 +267,88 @@ extracted, it's also stripped from the item's displayed `text` (e.g. "I'll
 send the revised proposal tomorrow." → text: "Send the revised proposal",
 `dueAt`: the resolved timestamp) — for decision/delegation/open_question
 items, the text is left as-is.
+
+### Time zone awareness
+
+Calendar phrases ("today", "tomorrow", weekday names, "by end of day")
+mean the *local* calendar day where the conversation happened, not the
+UTC calendar day — these differ near local-midnight boundaries. Example
+from the audit that caught this: at `2026-09-09T17:00:00Z` it's already
+`2026-09-10 01:00` local in `Asia/Manila` (UTC+8); "I'll send it
+tomorrow." must resolve to the local Sep 11, not a UTC-derived Sep 10. A
+naive UTC-only implementation gives `2026-09-10T00:00:00.000Z` here
+instead of the correct `2026-09-10T16:00:00.000Z` — see the regression
+test in `__tests__/deadline.test.ts` built directly from this example.
+
+`LoopDetectionInput.timeZone` (an IANA identifier, e.g.
+`"America/Los_Angeles"`) is now a required field. `extractDeadline` uses
+only built-in `Intl`/`Date` (no new dependency) to compute a zone's UTC
+offset *at the specific instant in question* — correctly reflecting DST —
+and to determine "today" from that zone's perspective before resolving
+any relative phrase. See the `getTimeZoneOffsetMinutes` /
+`localDateInZone` / `zonedMidnightUTC` helpers in `deadline.ts`.
+
+CueNexa Loop resolves which time zone to use, in priority order
+(`packages/cli/src/timezone.ts`):
+
+1. An explicit `LOOP_TIMEZONE` environment variable override.
+2. **Bee's own account time zone** — verified present as a `timezone`
+   field (e.g. `"America/Los_Angeles"`) on the real, authenticated `bee me
+   --json` profile response, surfaced through
+   `BeeAdapterClient.ensureAuthenticated()`'s return value (a bonus from
+   the same profile call already needed for the auth check — see
+   `docs/BEE_INTEGRATION.md`).
+3. The local system's IANA time zone
+   (`Intl.DateTimeFormat().resolvedOptions().timeZone`), as a documented
+   last-resort fallback when neither of the above is available.
+
+CueNexa Loop never silently assumes UTC.
+
+### Invalid dates are never invented
+
+The absolute month/day resolver validates that the constructed calendar
+date's year/month/day still exactly match what was requested —
+JavaScript's `Date` silently *normalizes* an invalid date instead of
+rejecting it (e.g. `new Date(Date.UTC(2026, 8, 31))`, "September 31",
+quietly becomes October 1), which would otherwise invent a deadline that
+was never actually said. "September 31", "April 31", and "February 30"
+always resolve to `dueAt: null` (with `dueAtPhrase` preserved);
+"February 29" resolves only when the calendar year actually being
+targeted is a real leap year. See `isValidCalendarDate` in `deadline.ts`
+and the regression tests covering all five cases in
+`__tests__/deadline.test.ts`.
+
+## Open-question reconciliation
+
+Sentence-by-sentence detection alone means almost any non-rhetorical
+sentence ending in "?" becomes `open_question` — including one immediately
+answered in the very next line ("Who owns deployment?" / "Alex owns
+deployment."). That's not actually unresolved, so surfacing it as an open
+Loop item would be misleading.
+
+`packages/loop-engine/src/question-resolution.ts` adds a conservative,
+**same-conversation-only** resolution pass — this is not Phase 1B
+cross-conversation correlation, it never looks outside the single
+conversation the question came from:
+
+- For each `open_question` candidate, look forward up to 5 utterances
+  within the *same* conversation.
+- Skip any later utterance that is itself a question — a question is
+  never treated as an answer to another question.
+- If a later, non-question sentence shares enough vocabulary with the
+  question (Jaccard similarity ≥ 0.4 — lower than dedup/completion's 0.7,
+  because a real answer replaces the interrogative word with new
+  information rather than restating the sentence: "who owns deployment"
+  → "Alex owns deployment" only overlaps on "owns"/"deployment"), the
+  question is suppressed as resolved.
+- "No one knows yet." does **not** resolve "Who owns deployment?" — zero
+  token overlap, comfortably below the threshold — so the question
+  correctly stays open. Precision over recall: when in doubt, the
+  question stays open.
+
+Rhetorical-question exclusion (see "Detection philosophy" above) runs
+independently at the per-sentence detector level and is unaffected by
+this pass.
 
 ## Provenance and evidence are mandatory
 
@@ -203,6 +387,15 @@ output:
 - No cloud service, LLM API, or telemetry is involved anywhere in
   detection. It's deterministic regex/heuristic matching running entirely
   in the same local process as Phase 0's adapter.
+- **Hydration doesn't change these guarantees, it just means more real
+  content flows through the same in-memory pipeline.** `loops:check` now
+  fetches full conversation detail (not just summaries) to make
+  conversation-derived detection possible at all — but that detail is
+  still never written to disk, still never printed by default, and
+  redaction/truncation still apply identically in `--include-content`
+  mode. Hydration warnings (see "Full conversation hydration" above)
+  never include summary or transcript text, only conversation ids and a
+  generic reason.
 
 ## Limitations
 
@@ -222,14 +415,43 @@ output:
   whatever name/label literally appears in the source text — no
   resolution against a contact list or speaker diarization beyond what
   Bee itself already provides.
-- **Negation handling is narrow**, covering explicit first-person
-  commitment negation only ("I won't...", "I will not..."). It does not
-  attempt cross-utterance retraction reasoning (a later "actually, don't
-  send it yet" isn't linked back to an earlier commitment to retract it
-  — it simply doesn't produce its own commitment either, since imperative
-  "don't X" never matches the positive commitment pattern).
+- **Negation handling is still pattern-based, not general NLP negation**,
+  even after the audit-remediation expansion (`will never`, `will <=2
+  words> not`, third-person `will not`/`won't`). A known accepted false
+  positive: idiomatic "I will not only send the proposal but also follow
+  up." would still be read as negated, since "not" appears within the gap
+  allowance regardless of the "not only... but also" construction. Cross-
+  utterance retraction reasoning is still not attempted (a later
+  "actually, don't send it yet" isn't linked back to an earlier
+  commitment to retract it — it simply doesn't produce its own commitment
+  either, since imperative "don't X" never matches the positive
+  commitment pattern).
 - **Deadline resolution covers a fixed phrase set** (see above) — no
   general natural-language date parsing.
+- **Time zone resolution has a fallback chain, not a guarantee of
+  correctness**: `LOOP_TIMEZONE` override → Bee's account time zone (from
+  the live profile response — verified present, but the response shape
+  isn't formally published by `@beeai/cli`, so a future change there
+  could silently drop it) → local system time zone. If Bee's own time
+  zone is ever wrong or stale for a given conversation (e.g. the user
+  travels), deadline resolution inherits that inaccuracy — this module
+  has no per-conversation location/time zone signal to fall back to.
+- **Open-question resolution uses a bounded 5-utterance forward window**
+  within the same conversation, not the entire remaining conversation —
+  an answer given further away than that is not recognized. This is a
+  deliberate conservatism, not an oversight: a wider window risks
+  false-positive resolutions from unrelated later content.
+- **Completion reconciliation and open-question resolution both use fixed
+  similarity thresholds** (0.7 and 0.4 respectively) tuned against the
+  audit's specific worked examples and locked in as regression tests —
+  like deduplication's threshold, they are heuristic judgment calls, not
+  guarantees against every possible phrasing.
+- **Conversation-detail hydration adds real Bee CLI subprocess calls**
+  (`conversations.get(id)`, bounded to 4 concurrent by default) that
+  `bee:check`'s list-only path doesn't make — `loops:check` is
+  correspondingly slower and more subprocess-call-heavy for accounts with
+  many recent conversations. Phase 1A does not implement caching between
+  runs.
 
 ## Explicitly out of scope (belongs to Phase 1B or later)
 

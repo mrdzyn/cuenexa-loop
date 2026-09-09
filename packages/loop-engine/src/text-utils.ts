@@ -52,6 +52,28 @@ export function tokenize(text: string): string[] {
     .filter((token) => token.length > 0 && !STOPWORDS.has(token));
 }
 
+/**
+ * Jaccard similarity (intersection / union) over each text's
+ * stopword-filtered token set — the shared "are these two pieces of text
+ * about the same action?" measure used by both within-snapshot
+ * deduplication (dedup.ts) and completed-Todo/open-question reconciliation.
+ */
+export function jaccardSimilarity(a: string, b: string): number {
+  const setA = new Set(tokenize(a));
+  const setB = new Set(tokenize(b));
+  if (setA.size === 0 || setB.size === 0) {
+    return 0;
+  }
+  let intersection = 0;
+  for (const token of setA) {
+    if (setB.has(token)) {
+      intersection += 1;
+    }
+  }
+  const union = new Set([...setA, ...setB]).size;
+  return union === 0 ? 0 : intersection / union;
+}
+
 export function capitalizeFirst(text: string): string {
   if (text.length === 0) {
     return text;

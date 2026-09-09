@@ -4,7 +4,7 @@ import { detectLoopItems } from "../engine.js";
 import { makeConversation, makeFact, makeTodo, NOW } from "../fixtures/synthetic-loop-data.js";
 
 function detect(overrides: Partial<Parameters<typeof detectLoopItems>[0]> = {}) {
-  return detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, ...overrides });
+  return detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC", ...overrides });
 }
 
 describe("detectLoopItems — synthetic scenarios", () => {
@@ -195,6 +195,102 @@ describe("detectLoopItems — malformed/missing input", () => {
   it("handles a completely empty snapshot without throwing", () => {
     expect(() => detect()).not.toThrow();
     expect(detect().items).toEqual([]);
+  });
+});
+
+describe("detectLoopItems — completion reconciliation (audit remediation item 2)", () => {
+  it("a completed Todo suppresses the matching open conversation commitment", () => {
+    const result = detect({
+      conversations: [makeConversation(["I'll send the estimate tomorrow."])],
+      todos: [makeTodo("Send the estimate tomorrow", { status: "completed" })],
+    });
+
+    expect(result.items).toHaveLength(0);
+  });
+
+  it("a completed Todo for a different action does not suppress an unrelated open commitment", () => {
+    const result = detect({
+      conversations: [makeConversation(["I'll send the estimate tomorrow."])],
+      todos: [makeTodo("Send the invoice tomorrow", { status: "completed" })],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("commitment");
+    expect(result.items[0]?.text).toContain("estimate");
+  });
+
+  it("a completed Todo never becomes a Loop item itself, even without a matching open candidate", () => {
+    const result = detect({ todos: [makeTodo("Archive the old proposal", { status: "completed" })] });
+    expect(result.items).toHaveLength(0);
+  });
+});
+
+describe("detectLoopItems — expanded negation (audit remediation item 5)", () => {
+  it("suppresses 'I will never <verb>' as a commitment", () => {
+    expect(detect({ conversations: [makeConversation(["I will never send the proposal."])] }).items).toHaveLength(0);
+  });
+
+  it("suppresses 'I will definitely not <verb>' as a commitment", () => {
+    expect(
+      detect({ conversations: [makeConversation(["I will definitely not send the proposal."])] }).items,
+    ).toHaveLength(0);
+  });
+
+  it("suppresses 'I will never <follow-up verb>' as a follow-up", () => {
+    expect(
+      detect({ conversations: [makeConversation(["I will never follow up with the vendor."])] }).items,
+    ).toHaveLength(0);
+  });
+
+  it("suppresses third-person 'will not' as a delegation", () => {
+    expect(
+      detect({ conversations: [makeConversation(["Sarah will not prepare the report."])] }).items,
+    ).toHaveLength(0);
+  });
+
+  it("still detects the positive form once negation is removed (commitment)", () => {
+    const result = detect({ conversations: [makeConversation(["I will definitely send the proposal."])] });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("commitment");
+  });
+
+  it("still detects the positive form once negation is removed (delegation)", () => {
+    const result = detect({ conversations: [makeConversation(["Sarah will prepare the report."])] });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("delegation");
+  });
+});
+
+describe("detectLoopItems — open-question reconciliation (audit remediation item 6)", () => {
+  it("suppresses a question answered later in the same conversation", () => {
+    const result = detect({
+      conversations: [makeConversation(["Who owns deployment?", "Alex owns deployment."])],
+    });
+    expect(result.items).toHaveLength(0);
+  });
+
+  it("keeps a question open when the reply does not actually answer it", () => {
+    const result = detect({
+      conversations: [makeConversation(["Who owns deployment?", "No one knows yet."])],
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("open_question");
+  });
+
+  it("does not suppress a question answered in a different conversation", () => {
+    const result = detect({
+      conversations: [
+        makeConversation(["Who owns deployment?"], { id: "conv_a" }),
+        makeConversation(["Alex owns deployment."], { id: "conv_b" }),
+      ],
+    });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("open_question");
+  });
+
+  it("still excludes recognizable rhetorical questions", () => {
+    const result = detect({ conversations: [makeConversation(["That went well, right?"])] });
+    expect(result.items).toHaveLength(0);
   });
 });
 

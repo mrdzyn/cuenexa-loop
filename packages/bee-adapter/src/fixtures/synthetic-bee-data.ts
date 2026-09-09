@@ -92,6 +92,32 @@ export const syntheticConversationDetailResponse: BeeConversationDetailResponse 
   conversation: syntheticConversation,
 };
 
+/**
+ * Bee's real `conversations.list()` response is summary-only — verified
+ * against a live account during Phase 1A audit remediation (see
+ * docs/FRICTION-LOG.md) to never include nested `transcriptions[]` at
+ * all, only `conversations.get(id)` does. This mirrors that: the same
+ * conversation as `syntheticConversation`, minus `transcriptions`, for
+ * conversation-detail-hydration regression tests.
+ */
+export const syntheticConversationSummary: BeeConversation = {
+  id: syntheticConversation.id,
+  start_time: syntheticConversation.start_time,
+  end_time: syntheticConversation.end_time,
+  device_type: syntheticConversation.device_type,
+  state: syntheticConversation.state,
+  created_at: syntheticConversation.created_at,
+  updated_at: syntheticConversation.updated_at,
+  short_summary: syntheticConversation.short_summary,
+  summary: syntheticConversation.summary,
+  primary_location: syntheticConversation.primary_location,
+};
+
+export const syntheticConversationSummaryListResponse = {
+  conversations: [syntheticConversationSummary],
+  next_cursor: "cursor_synthetic_conversations_002",
+};
+
 export const syntheticConversationMissingFields: BeeConversation = {
   // No id, no summary, no timestamps, no transcriptions: exercises placeholder-id and warning paths.
 };

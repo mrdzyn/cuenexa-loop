@@ -95,3 +95,15 @@ export interface DetectionWarning {
   field: string;
   message: string;
 }
+
+/**
+ * Shared reference context threaded through candidate building: the
+ * instant detection is running at, and the IANA time zone calendar
+ * phrases ("today", "tomorrow", weekday names) should be resolved
+ * against. See docs/LOOP-DETECTION.md ("Timezone-aware deadline
+ * resolution") for why this must not default to UTC.
+ */
+export interface DetectionContext {
+  now: string;
+  timeZone: string;
+}

@@ -36,14 +36,19 @@ helper wraps the same profile check in a bare `try { … } catch { return
 false }`, which collapses "Bee CLI isn't installed," "Bee CLI returned
 something unparseable," and "you haven't run `bee login`" into a single
 boolean — making it impossible to tell a missing CLI from a missing
-session. Calling `getProfile()` directly preserves that distinction.
+session. Calling `getProfile()` directly preserves that distinction, and
+— as a bonus from the same call — `ensureAuthenticated()` returns an
+`AuthenticationInfo` carrying Bee's own account `timeZone` (verified
+present as a `"timezone"` field on the real, authenticated `bee me --json`
+response) when the profile response includes one, used for timezone-aware
+Loop detection (see `docs/LOOP-DETECTION.md`).
 
 `BeeAdapterClient` (`packages/bee-adapter/src/bee-client.ts`) is the sole
 wrapper around this library in the codebase:
 
 | Bee capability                        | `BeeAdapterClient` method       |
 | --------------------------------------- | ---------------------------------- |
-| Authentication check                   | `ensureAuthenticated()`          |
+| Authentication check + account time zone | `ensureAuthenticated()`        |
 | `bee.api.conversations.list()`         | `listConversations(options?)`   |
 | `bee.api.conversations.get(id)`        | `getConversation(id)`            |
 | `bee.api.facts.list()`                 | `listFacts(options?)`            |
@@ -51,6 +56,14 @@ wrapper around this library in the codebase:
 
 No Bee response shape leaks past this file: everything above it in
 `@cuenexa-loop/cli` only ever sees `@cuenexa-loop/contracts` types.
+
+`@cuenexa-loop/bee-adapter`'s `service.ts` composes these into two
+snapshot builders with different scopes — `fetchBeeSnapshot` (list-only,
+used by `bee:check`) and `fetchDetectionSnapshot` (additionally hydrates
+each conversation's full detail via `getConversation(id)`, used by
+`loops:check`). See `docs/LOOP-DETECTION.md` ("Full conversation
+hydration") for why the distinction exists and how hydration failures are
+handled.
 
 ## Optional proxy fallback: none
 
@@ -211,5 +224,11 @@ above), fact and todo list responses, empty responses, missing-field
 records, malformed-field records, and pagination metadata (`next_cursor`).
 No real Bee transcripts, facts, todos, IDs, names, locations, or account
 information appear anywhere in this repository. `npm test` runs entirely
-against these fixtures; the only thing that touches a real, authenticated
-Bee session is `npm run bee:check`, run manually by the repository owner.
+against these fixtures; the only things that touch a real, authenticated
+Bee session are `npm run bee:check` and `npm run loops:check`, both run
+manually by the repository owner. `loops:check` additionally hydrates
+full conversation detail (see "Full conversation hydration" in
+`docs/LOOP-DETECTION.md`) — real transcript content passes through
+process memory during that run, but is never written to disk and never
+printed unless `--include-content` is explicitly passed (and even then,
+redacted/truncated).

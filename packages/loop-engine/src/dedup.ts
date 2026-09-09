@@ -1,4 +1,4 @@
-import { tokenize } from "./text-utils.js";
+import { jaccardSimilarity } from "./text-utils.js";
 import type { DetectionCandidate, LoopSource } from "./types.js";
 
 /**
@@ -17,22 +17,6 @@ const SIMILARITY_MERGE_THRESHOLD = 0.7;
 /** The text used for similarity comparison is each candidate's raw evidence text, not its cleaned display text. */
 function comparisonText(candidate: DetectionCandidate): string {
   return candidate.evidence.map((evidence) => evidence.text).join(" ");
-}
-
-function similarity(a: string, b: string): number {
-  const setA = new Set(tokenize(a));
-  const setB = new Set(tokenize(b));
-  if (setA.size === 0 || setB.size === 0) {
-    return 0;
-  }
-  let intersection = 0;
-  for (const token of setA) {
-    if (setB.has(token)) {
-      intersection += 1;
-    }
-  }
-  const union = new Set([...setA, ...setB]).size;
-  return union === 0 ? 0 : intersection / union;
 }
 
 /**
@@ -69,7 +53,7 @@ export function deduplicateCandidates(candidates: DetectionCandidate[]): Detecti
     const existingIndex = merged.findIndex(
       (existing) =>
         eligibleToMerge(existing, candidate) &&
-        similarity(comparisonText(existing), comparisonText(candidate)) >= SIMILARITY_MERGE_THRESHOLD,
+        jaccardSimilarity(comparisonText(existing), comparisonText(candidate)) >= SIMILARITY_MERGE_THRESHOLD,
     );
 
     if (existingIndex === -1) {

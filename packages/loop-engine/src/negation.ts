@@ -1,19 +1,43 @@
 /**
- * Detects an explicit first-person commitment negation ("I won't...",
- * "I will not...", "I'll not..."). This is intentionally narrow rather
- * than a general negation detector: "I won't send it" never matches the
- * positive commitment trigger pattern in the first place ("won't" isn't
- * "will"), so the only case that needs an explicit guard is when the
- * modal verb itself is present but followed by "not" — "I will not send
- * it" would otherwise match the positive pattern.
- *
- * Phase 1A does not attempt cross-utterance retraction reasoning (a later
- * "actually, don't send it yet" correctly produces no commitment on its
- * own, since imperative "don't X" never matches the positive commitment
- * pattern either) — see docs/LOOP-DETECTION.md ("Limitations").
+ * Detects explicit commitment negation for a given subject, allowing a
+ * short adverbial gap between the modal verb and the negator: "I will
+ * not...", "I will definitely not...", "I will never...", "I won't...".
+ * The gap is capped at two words specifically so this stays a narrow,
+ * deterministic pattern rather than drifting toward general negation-
+ * scope detection — "Do not implement general NLP negation" per the
+ * Phase 1A brief. A known false-positive this accepts as a documented
+ * limitation: idiomatic "not only X but also Y" would still trigger it.
+ * See docs/LOOP-DETECTION.md ("Limitations").
  */
-const NEGATED_COMMITMENT_PATTERN = /\bi\s+won'?t\b|\bi(?:'ll|\s+will)\s+not\b/i;
+function buildWillNegationPattern(subjectPattern: string): RegExp {
+  return new RegExp(
+    `\\b${subjectPattern}\\s+won'?t\\b|\\b${subjectPattern}(?:'ll|\\s+will)\\s+(?:\\w+\\s+){0,2}(?:not|never)\\b`,
+    "i",
+  );
+}
 
+const FIRST_PERSON_NEGATION_PATTERN = buildWillNegationPattern("i");
+
+/**
+ * First-person commitment/follow-up negation: "I won't...", "I will
+ * not...", "I will definitely not...", "I will never...", "I'll
+ * never...". Used by both `detectCommitment` and `detectFollowUp` — a
+ * negated commitment is never reclassified as a negated follow-up, it's
+ * simply not detected as either.
+ */
 export function hasCommitmentNegation(text: string): boolean {
-  return NEGATED_COMMITMENT_PATTERN.test(text);
+  return FIRST_PERSON_NEGATION_PATTERN.test(text);
+}
+
+const NEGATED_CONTINUATION_PATTERN = /^(?:\w+\s+){0,2}(?:not|never)\b/i;
+
+/**
+ * True when `remainder` (the text immediately following a "<Name> will"
+ * trigger) starts with a negator within the same short adverbial-gap
+ * allowance as `hasCommitmentNegation` — used by `detectDelegation` so
+ * "Sarah will not prepare the report." isn't misread as delegating the
+ * report to Sarah.
+ */
+export function isNegatedContinuation(remainder: string): boolean {
+  return NEGATED_CONTINUATION_PATTERN.test(remainder.trim());
 }

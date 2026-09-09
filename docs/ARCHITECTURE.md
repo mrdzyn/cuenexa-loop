@@ -10,6 +10,9 @@ Bee (captures, transcribes, summarizes)
 Bee CLI authenticated environment (the `bee` executable on PATH)
     ↓  createBeeClient() — @beeai/cli/lib
 BeeAdapterClient (packages/bee-adapter/src/bee-client.ts)
+    ↓  fetchBeeSnapshot (list-only, bee:check) OR
+       fetchDetectionSnapshot (+ conversations.get(id) hydration, loops:check)
+       (packages/bee-adapter/src/service.ts)
     ↓  normalizeConversation / normalizeFact / normalizeTodo
        (packages/bee-adapter/src/normalize/*.ts)
 CueNexa Loop contracts — LoopConversation, LoopFact, LoopTodo
@@ -66,14 +69,18 @@ something might need to change independently:
 - **`@cuenexa-loop/loop-engine`** is the Phase 1A deterministic Loop
   detection engine: `detectLoopItems()` turns `LoopConversation[]`/
   `LoopFact[]`/`LoopTodo[]` into structured `LoopItem[]` via a
-  candidate → dedup → confidence-filter → validated-`LoopItem` pipeline
-  (`candidate-builder.ts` → `dedup.ts` → `engine.ts`). It depends only on
-  `@cuenexa-loop/contracts` — never on `@cuenexa-loop/bee-adapter` or
-  anything Bee-specific, so a future non-Bee data source could feed it
-  the same contracts and get the same detection for free. No LLM, no
-  network call, no persistence. See
+  candidate → dedup → completion-reconciliation → confidence-filter →
+  validated-`LoopItem` pipeline (`candidate-builder.ts` → `dedup.ts` →
+  `completion.ts` → `engine.ts`), plus a same-conversation-only
+  open-question resolution pass (`question-resolution.ts`). It depends
+  only on `@cuenexa-loop/contracts` — never on `@cuenexa-loop/bee-adapter`
+  or anything Bee-specific, so a future non-Bee data source could feed it
+  the same contracts and get the same detection for free. Its input
+  requires an explicit IANA `timeZone` (never assumes UTC — see
+  `docs/LOOP-DETECTION.md`). No LLM, no network call, no persistence. See
   [docs/LOOP-DETECTION.md](LOOP-DETECTION.md) for the full detection
-  philosophy, confidence semantics, and deduplication approach.
+  philosophy, confidence semantics, and deduplication/reconciliation
+  approach.
 
 - **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
   live acceptance checks (`npm run bee:check` / `npm run loops:check` run
@@ -116,12 +123,14 @@ record.
 
 ## Why there's no persistence layer
 
-Phase 0 is scoped to prove the pipeline above end-to-end without taking on
-the responsibility of storing anyone's conversational data. See
-[docs/PRIVACY.md](PRIVACY.md) for the reasoning; architecturally, the
-consequence is that there is no database package, no file-writing code
-path in the CLI, and no caching layer — `fetchBeeSnapshot` is called fresh
-on every run.
+Phase 0 and Phase 1A are scoped to prove the pipeline above end-to-end
+without taking on the responsibility of storing anyone's conversational
+data. See [docs/PRIVACY.md](PRIVACY.md) for the reasoning;
+architecturally, the consequence is that there is no database package, no
+file-writing code path in the CLI, and no caching layer — both
+`fetchBeeSnapshot` and `fetchDetectionSnapshot` are called fresh on every
+run, and `detectLoopItems` is a pure function with no memory of any
+previous run.
 
 ## Why default output and `--include-content` are separate code paths
 

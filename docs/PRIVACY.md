@@ -10,10 +10,17 @@ privacy posture the rest of the project builds on, around six principles.
 
 No Bee content, and no detected Loop item, is written to disk. There is
 no database, no cache, no file CueNexa Loop writes containing Bee data or
-detection results. `fetchBeeSnapshot` and `detectLoopItems` are both
-called fresh every run; both results live only in process memory for the
-lifetime of a single CLI invocation, then exit. `detectLoopItems` is a
-pure function — it has no side effects and no I/O of its own at all.
+detection results. `fetchBeeSnapshot`, `fetchDetectionSnapshot`, and
+`detectLoopItems` are all called fresh every run; every result lives only
+in process memory for the lifetime of a single CLI invocation, then
+exits. `detectLoopItems` is a pure function — it has no side effects and
+no I/O of its own at all. `fetchDetectionSnapshot` additionally fetches
+full conversation detail (not just list summaries — see
+`docs/LOOP-DETECTION.md`, "Full conversation hydration") so
+conversation-derived detection has real utterance text to work with, but
+that fuller content is held under the exact same "in memory only, this
+run only" rule — it is never cached to disk between runs, and hydration
+failures are reported only as a generic, content-free warning.
 
 ## No real data in this repository
 

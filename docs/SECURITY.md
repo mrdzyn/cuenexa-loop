@@ -55,7 +55,13 @@ Nothing in this codebase binds a port, opens a socket for inbound
 connections, or runs as a long-lived service. `@cuenexa-loop/cli` is a
 short-lived process that runs once and exits. (An earlier version of this
 project ran a local HTTP proxy client; that integration has been removed
-entirely — see `docs/BEE_INTEGRATION.md`.)
+entirely — see `docs/BEE_INTEGRATION.md`.) `loops:check` does spawn more
+`bee` subprocesses than `bee:check` — one per conversation being
+hydrated, via `conversations.get(id)` — but bounded to a small, fixed
+concurrency (4 by default) rather than unbounded, so it can't fork-bomb
+the local `bee` CLI even against an account with many recent
+conversations. See `docs/LOOP-DETECTION.md` ("Full conversation
+hydration").
 
 ## No cloud dependency
 

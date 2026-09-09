@@ -1,4 +1,5 @@
 import { CONFIDENCE } from "../confidence.js";
+import { isNegatedContinuation } from "../negation.js";
 import { capitalizeFirst, stripTrailingPunctuation } from "../text-utils.js";
 import type { DetectorMatch } from "./types.js";
 
@@ -6,7 +7,8 @@ import type { DetectorMatch } from "./types.js";
 const NON_PERSON_SUBJECTS = new Set(["i", "we", "you", "they", "it"]);
 
 const DIRECT_ADDRESS_PATTERN = /^([A-Z][a-zA-Z]*),\s*(?:can|could|would)\s+you\b|^([A-Z][a-zA-Z]*),\s*please\b/;
-const THIRD_PERSON_WILL_PATTERN = /^([A-Z][a-zA-Z]*)\s+will\s+/;
+/** Captures the remainder after "will" too, so a negated continuation ("will not", "will never") can be excluded. */
+const THIRD_PERSON_WILL_PATTERN = /^([A-Z][a-zA-Z]*)\s+will\s+(.*)$/;
 const PLEASE_HAVE_PATTERN = /\bplease\s+have\s+(.+?)\s+(?:verify|prepare|send|complete|review|handle|confirm|check|do)\b/i;
 
 /**
@@ -29,7 +31,8 @@ export function detectDelegation(sentence: string): DetectorMatch | null {
 
   const thirdPersonWill = trimmed.match(THIRD_PERSON_WILL_PATTERN);
   const thirdPersonName = thirdPersonWill?.[1];
-  if (thirdPersonName && isPersonSubject(thirdPersonName)) {
+  const thirdPersonRemainder = thirdPersonWill?.[2];
+  if (thirdPersonName && isPersonSubject(thirdPersonName) && !isNegatedContinuation(thirdPersonRemainder ?? "")) {
     return build(trimmed, thirdPersonName);
   }
 
