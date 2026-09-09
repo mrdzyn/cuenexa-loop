@@ -12,7 +12,7 @@ import { createBeeClient } from "@beeai/cli/lib";
 
 const bee = createBeeClient();
 
-await bee.auth.isAuthenticated();
+await bee.auth.getProfile(); // used for the auth preflight — see below for why not isAuthenticated()
 await bee.api.conversations.list();
 await bee.api.conversations.get(id);
 await bee.api.facts.list();
@@ -29,8 +29,14 @@ Authentication is entirely the Bee CLI's responsibility:
 3. `bee status` — confirms an authenticated session exists.
 
 CueNexa Loop never reads, stores, or transmits a Bee credential itself —
-`BeeAdapterClient.ensureAuthenticated()` only calls
-`bee.auth.isAuthenticated()` and checks the boolean it returns.
+`BeeAdapterClient.ensureAuthenticated()` calls `bee.auth.getProfile()` and
+lets a real failure classify itself (see "Error handling" below).
+Deliberately, it does **not** call `bee.auth.isAuthenticated()`: that
+helper wraps the same profile check in a bare `try { … } catch { return
+false }`, which collapses "Bee CLI isn't installed," "Bee CLI returned
+something unparseable," and "you haven't run `bee login`" into a single
+boolean — making it impossible to tell a missing CLI from a missing
+session. Calling `getProfile()` directly preserves that distinction.
 
 `BeeAdapterClient` (`packages/bee-adapter/src/bee-client.ts`) is the sole
 wrapper around this library in the codebase:
@@ -56,6 +62,33 @@ paths once the official library covered the same functionality with a
 smaller trust surface (no locally-bound, unauthenticated HTTP server).
 Running `bee proxy` is not required for any part of the normal CueNexa
 Loop workflow.
+
+## Which `bee` actually runs
+
+`createBeeClient()` spawns the bare command name `"bee"` and lets the OS
+resolve it via `PATH`. Under any `npm run`/`npm exec`/`npm start`
+invocation — i.e. every way this project runs — npm prepends
+`node_modules/.bin` to `PATH`, and because `@beeai/cli` declares
+`"bin": { "bee": "bin/bee.js" }`, npm workspace hoisting puts a
+**workspace-local** `bee` there. Verify this yourself: `npm exec -- which
+bee` resolves to `<repo>/node_modules/.bin/bee`, not a separately
+installed global `bee`, even if you also have one on your system `PATH`
+from `npm install -g @beeai/cli`.
+
+In practice this has not caused a problem: the workspace-local wrapper
+execs the platform binary bundled in `node_modules/@beeai/cli/dist/
+platforms/<platform>-<arch>/bee`, which authenticates against the exact
+same stored session as a separately-installed global `bee` (Bee CLI's
+credential storage is not per-install). But it does mean **the Bee CLI
+version this project actually talks to is whatever `@beeai/cli` version
+is pinned in `packages/bee-adapter/package.json`**, not necessarily
+whatever `bee --version` reports globally on your system. If those two
+ever drift, the symptom would show up as `npm run bee:check` behaving
+differently than a manually-run global `bee` command — check
+`node_modules/.bin/bee --version` against your global `bee --version` if
+that ever happens. See `docs/FRICTION-LOG.md` for how this was discovered
+(a claim in an earlier version of this document asserted the global CLI
+was used, and was wrong).
 
 ## Why the raw types are defensive, not authoritative
 
@@ -91,14 +124,23 @@ has committed to. Consequently:
   (`{ "conversation": { "id": 123, ... } }`) rather than bare.
   `BeeAdapterClient.getConversation` unwraps this — see the regression
   tests in `packages/bee-adapter/src/__tests__/bee-client.test.ts`.
+- **Timestamps**: every timestamp field accepts an ISO 8601 string, an
+  epoch-milliseconds number, an epoch-*seconds* number, or a numeric
+  string of either (`coerceTimestamp` in `normalize/util.ts`). Bee's
+  numeric timestamp fields are realistic epoch-seconds values (~1.7e9,
+  not ~1.7e12) — a value's magnitude decides whether it's treated as
+  seconds (magnitude < 1e12, multiplied by 1000) or already-milliseconds.
+  This matters because `new Date(value)` on a bare number always assumes
+  milliseconds: feeding it an epoch-*seconds* value directly silently
+  produces a date in January 1970 instead of an error, which is worse
+  than throwing — see `docs/FRICTION-LOG.md` for how this was caught.
+  A numeric-looking *string* (e.g. `"1735689600"`) is parsed as a number
+  first, since `new Date("1735689600")` does not reliably parse a bare
+  digit string as an epoch value either.
 - `normalizeConversation` / `normalizeFact` / `normalizeTodo`
   never throw on a missing or unexpected field — they default it, record
   a `NormalizationWarning`, and validate the final record against its
   Zod contract schema before returning.
-- List responses are read defensively: `extractPage` accepts a bare JSON
-  array or an object wrapping the array under `conversations`/`facts`/
-  `todos`/`items`/`data`, alongside an optional `next_cursor` — an
-  unrecognized wrapper shape produces an empty page rather than throwing.
 
 If your local `bee <command> --json` output uses different field names
 than what's in `raw-types.ts`, that file is the one place to update —
@@ -117,6 +159,19 @@ has what it needs to page further without re-deriving it. A non-null
 `nextCursor` today just means "there's more" — nothing in Phase 0 acts on
 it yet.
 
+`extractPage` (`packages/bee-adapter/src/pagination.ts`) reads a list
+response defensively — a bare JSON array, or an object wrapping the array
+under `conversations`/`facts`/`todos`/`items`/`data` — but **a
+recognized wrapper with an empty array and an unrecognized shape are not
+treated the same way**. `{ "facts": [] }` is a legitimate, successful
+empty page. A response matching none of those keys (or not an
+object/array at all) throws `BeeMalformedResponseError` instead of
+quietly returning an empty page — an earlier version of this adapter
+conflated the two, which would have silently reported "0 facts" for a
+response that was actually broken or reshaped by a future Bee release,
+indistinguishable from a real "you have no facts" answer. See the
+regression tests in `packages/bee-adapter/src/__tests__/bee-client.test.ts`.
+
 ## Error handling
 
 `BeeAdapterClient` classifies every failure from the underlying `bee`
@@ -128,12 +183,20 @@ stderr text:
 - **`BeeCliUnavailableError`** — the `bee` executable itself could not be
   spawned (`ENOENT`); most commonly, Bee CLI isn't installed or isn't on
   `PATH`.
-- **`BeeAuthenticationError`** — `bee.auth.isAuthenticated()` returned
-  `false`; the user needs to run `bee login`.
+- **`BeeAuthenticationError`** — thrown by `ensureAuthenticated()` when
+  `bee.auth.getProfile()` fails for a reason that isn't clearly "CLI
+  unavailable" or "malformed response" (`classifyAuthError` in
+  `errors.ts`) — the user needs to run `bee login`. This is deliberately
+  a different, stricter classification path than ordinary data calls use
+  (see above) specifically so it doesn't collapse CLI-missing into
+  auth-missing the way `@beeai/cli/lib`'s own `isAuthenticated()` does.
 - **`BeeCommandError`** — `bee` ran and exited non-zero for any other
-  reason (network issue, session expired mid-command, etc.).
+  reason (network issue, session expired mid-command, etc.), for an
+  ordinary data call (not the authentication preflight).
 - **`BeeMalformedResponseError`** — `bee` exited zero but its stdout
-  wasn't valid JSON, most likely a Bee CLI version mismatch.
+  wasn't valid JSON (likely a Bee CLI version mismatch), **or** a list
+  response's JSON was valid but didn't match any recognized wrapper shape
+  (see "Pagination" above).
 
 None of these error messages include the underlying command's raw
 stdout/stderr — see `packages/cli/src/error-report.ts` and

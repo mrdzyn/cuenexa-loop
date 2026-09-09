@@ -35,13 +35,22 @@ npm warn install-scripts Run `npm install-scripts ls` to review, or `npm install
 
 This is npm's install-scripts allowlist security gate: postinstall scripts are not run automatically unless explicitly approved.
 
-**Effect:** Investigating `@beeai/cli`'s `scripts/postinstall.js` showed it only `chmod`s a bundled platform-specific `bee` binary at `dist/platforms/<platform>-<arch>/bee`, used by that package's own `bin: bee` entry. CueNexa Loop never invokes that bundled binary — it only imports the pure-JS `@beeai/cli/lib` subpath, and `createBeeClient()` spawns whatever `bee` executable is already on `PATH` (i.e. a separately, globally installed and authenticated Bee CLI). So the skipped postinstall step had no effect on this project's functionality. This was verified, not assumed: `npm run typecheck`, `npm test`, and `npm run build` all pass with the postinstall skipped.
+**Effect (corrected on re-audit — the original entry here was wrong about the mechanism):** The first version of this entry claimed `createBeeClient()` "spawns whatever `bee` executable is already on `PATH` (i.e. a separately, globally installed and authenticated Bee CLI)" and that the workspace-local copy was therefore never invoked. That is **false**, and was asserted without checking. Verifying directly:
 
-**Severity:** Low — cosmetic warning, no functional impact for this project's usage pattern.
+```
+$ npm exec -- which bee
+/…/cuenexa-loop/node_modules/.bin/bee
+```
 
-**Workaround:** None needed for `@cuenexa-loop/bee-adapter`'s use of `@beeai/cli/lib`. If a future contributor wants the bundled `bin: bee` binary from the workspace-local copy specifically (rather than relying on a separately installed global `bee`), run `npm install-scripts approve @beeai/cli` after reviewing `scripts/postinstall.js`.
+Because `@beeai/cli` declares `"bin": { "bee": "bin/bee.js" }`, npm workspace hoisting links that script at `node_modules/.bin/bee`, and any command run through `npm run`/`npm exec`/`npm start` gets `node_modules/.bin` prepended to `PATH`. `createBeeClient()` spawns the bare command name `"bee"`, so under every npm script in this project, the **workspace-local** `bin/bee.js` resolves first — not a separately-installed global `bee`. `bin/bee.js` then execs the bundled platform binary at `node_modules/@beeai/cli/dist/platforms/<platform>-<arch>/bee`, the exact file the skipped postinstall script would have `chmod`ed.
 
-**Actionable suggestion:** Document this explicitly in `docs/BEE_INTEGRATION.md` (done) so a future contributor doesn't spend time chasing a warning that doesn't affect this project's integration path. If `@beeai/cli` publishes a version whose postinstall does more than `chmod` a binary this project doesn't use, re-verify this conclusion.
+That bundled binary was still executable (`-rwxr-xr-x`) despite the skipped postinstall — npm's tarball extraction preserved the packed executable bit on this platform/npm version, making the postinstall's `chmod` redundant here, not necessary. Running it directly (`node_modules/.bin/bee status`) also authenticated against the same account as the separately-installed global `bee`, meaning Bee CLI's credential storage lives outside the package directory (not per-install), so a real user's `bee login` session is shared regardless of which physical binary copy runs it. All three facts were demonstrated, not assumed, before writing this correction.
+
+**Severity:** Low in practice (demonstrated working end-to-end via `npm run bee:check` against a real session) — but Medium as a *documentation* finding, since the original claim was confidently wrong about which binary actually runs. See `docs/BEE_INTEGRATION.md` ("Which `bee` actually runs") for the corrected, permanent explanation and the version-drift risk this creates.
+
+**Workaround:** None needed today — it works. If a future npm version stops preserving the executable bit on extraction, or ships a `@beeai/cli` version whose postinstall does more than `chmod`, the workspace-local `bee` could fail even though a global `bee` works fine. `npm install-scripts approve @beeai/cli` (after reviewing `scripts/postinstall.js`) removes that risk.
+
+**Actionable suggestion:** Never assert "X spawns Y" for a subprocess-based integration without actually resolving what `PATH` puts there under the real invocation context (`npm exec -- which <cmd>`, not just "it should resolve to the global one"). Re-verify this conclusion if `@beeai/cli`'s postinstall or packaging changes.
 
 ---
 
@@ -98,3 +107,46 @@ This is npm's install-scripts allowlist security gate: postinstall scripts are n
 **Severity:** Low.
 
 **Actionable suggestion:** Revisit only if the contracts schema evolves to use optional (`?:`) properties instead of `| null` unions.
+
+---
+
+## `npm audit` findings were all in the vitest/vite/esbuild dev toolchain
+
+**Date:** 2026-09-09
+
+**Task:** Resolve the 4 advisories (2 moderate, 1 high, 1 critical) `npm audit` reported after Phase 0's first audit pass.
+
+**Steps taken:**
+1. Ran `npm audit` and `npm audit --omit=dev` — the latter reported 0 vulnerabilities, confirming all 4 were dev-only (`vitest`/`vite`/`vite-node`/`esbuild`, pulled in transitively by `vitest`).
+2. Read each advisory: a critical arbitrary-file-read/execute in Vitest's UI server (GHSA-5xrq-8626-4rwp, fixed at vitest ≥3.2.6), a high/moderate set of Vite path-traversal issues (fixed at vite ≥6.4.3), and a moderate `@vitest/mocker` path-traversal issue with a separate, *later* fix boundary (GHSA-82fw-gwwq-j7x9, fixed at vitest ≥4.1.11 on the 4.x line, not 3.2.6).
+3. Rejected `npm audit fix --force`'s suggestion (jump straight to `vitest@5.0.0`, a two-major bump) in favor of the smallest version that actually clears every advisory: `vitest@^4.1.11`.
+4. Bumped the root `vitest` devDependency, reinstalled, and re-ran `npm audit` (0 vulnerabilities), then the full `typecheck`/`test`/`build` sequence to confirm the 1.x→4.x jump didn't break anything (`vitest.config.ts`'s minimal `test.include`/`resolve.alias` surface carried over without changes needed).
+
+**Expected result:** A single-command fix.
+
+**Actual result:** The two advisory chains had *different* fix boundaries (vite needed ≥6.4.3, `@vitest/mocker` needed vitest ≥4.1.11 specifically — 3.2.7 alone still left the mocker advisory open), so getting a truly minimal fix took two iterations rather than accepting the first "clean audit" result at 3.2.7.
+
+**Severity:** Low (dev-only; exploitability required manually running `vitest --ui` or a Vite dev server, which no script in this repository does) — worth fixing anyway to remove the residual risk of a developer running either manually.
+
+**Actionable suggestion:** When `npm audit fix --force` suggests a major bump, check whether a smaller major (or even a patch within the *next* major, as here) already clears the advisory before accepting the aggressive suggestion — `npm view <pkg>@<version> version` and reading the linked GHSA's exact patched-version field (not just its severity) is enough to check.
+
+---
+
+## Defensive code that was too defensive, and hid real failures
+
+**Date:** 2026-09-09
+
+**Task:** A second audit pass found three places where "never throw, degrade gracefully" — the right default for a single malformed *field* — had been over-applied to situations where silence was actively misleading.
+
+**Steps taken / what was found:**
+1. `coerceTimestamp` fed any numeric value straight into `new Date(value)`, which always interprets a bare number as epoch *milliseconds*. Bee's numeric timestamp fields are epoch *seconds* (~1e9), so every one of them silently normalized to a date in January 1970 instead of throwing or warning — the single most dangerous kind of bug for "never throw" code, because the wrong answer looks exactly like a right one. Fixed by detecting the magnitude (< 1e12 ⇒ seconds) and applying it to numbers *and* numeric-looking strings alike (`new Date("1735689600")` parses as an invalid date, not the number 1,735,689,600 — a separate trap in the same function).
+2. `extractPage` (list-response unwrapping) returned an empty page for both a genuinely empty `{ facts: [] }` *and* a completely unrecognized response shape. Both looked identical to a caller: "0 items, everything's fine." Fixed by throwing `BeeMalformedResponseError` for the unrecognized case, keeping the recognized-but-empty case as a real success.
+3. `ensureAuthenticated()` called `@beeai/cli/lib`'s own `auth.isAuthenticated()` helper, which internally wraps the profile check in a bare `try { … } catch { return false }` — collapsing "Bee CLI isn't installed", "Bee CLI returned garbage", and "you haven't run `bee login`" into the exact same boolean. Fixed by calling the underlying `auth.getProfile()` directly (bypassing that collapsing wrapper) and classifying the real error.
+
+**Expected result (before this pass):** All three appeared correct — normalizer tests were green because every test fixture happened to use ISO timestamp strings, not numeric epoch-seconds ones; pagination tests only exercised recognized wrappers; and there was no authenticated-vs-unavailable regression test because both cases had never been observed to behave differently.
+
+**Actual result:** Each was silently wrong in a way unit tests didn't catch until fixtures were added specifically shaped like the buggy case (a numeric epoch-seconds timestamp, an unrecognized wrapper object, an ENOENT rejection from the profile check specifically).
+
+**Severity:** High for (1) — silent data corruption with no signal at all; Medium for (2) and (3) — silent loss of a real distinction, not silent corruption of a value.
+
+**Actionable suggestion:** For any "never throw, degrade gracefully" code path, ask specifically: *is there an input shape where the graceful fallback looks identical to a correct, successful result?* If yes, that's not resilience, it's a masked bug — add a fixture for exactly that input shape before trusting the code path. This is different from "missing field ⇒ warn and default," which is fine because the caller can see the warning.

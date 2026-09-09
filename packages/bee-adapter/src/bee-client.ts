@@ -1,7 +1,7 @@
 import { createBeeClient } from "@beeai/cli/lib";
 import type { BeeCliOptions, BeeClient } from "@beeai/cli/lib";
 import type { Page } from "@cuenexa-loop/contracts";
-import { BeeAuthenticationError, classifyBeeError } from "./errors.js";
+import { classifyAuthError, classifyBeeError } from "./errors.js";
 import { extractPage } from "./pagination.js";
 import type { BeeConversation, BeeConversationDetailResponse, BeeFact, BeeTodo } from "./raw-types.js";
 
@@ -33,14 +33,20 @@ export class BeeAdapterClient {
     this.client = options.client ?? createBeeClient(options.cliOptions);
   }
 
-  /** Throws BeeAuthenticationError if `bee login` has not been completed for this session. */
+  /**
+   * Throws BeeCliUnavailableError, BeeAuthenticationError, or
+   * BeeMalformedResponseError as appropriate. Deliberately does **not**
+   * call `this.client.auth.isAuthenticated()` — that helper swallows every
+   * failure (CLI missing, malformed output, not logged in) into a single
+   * `false`, which makes it impossible to tell those cases apart. Calling
+   * the underlying profile check (`auth.getProfile()`) directly lets the
+   * real failure reach `classifyAuthError` for proper classification.
+   */
   async ensureAuthenticated(): Promise<void> {
-    const authenticated = await this.guarded(
-      () => this.client.auth.isAuthenticated(),
-      "checking Bee authentication",
-    );
-    if (!authenticated) {
-      throw new BeeAuthenticationError("Bee CLI reported no authenticated session.");
+    try {
+      await this.client.auth.getProfile();
+    } catch (error) {
+      throw classifyAuthError(error);
     }
   }
 
@@ -49,7 +55,7 @@ export class BeeAdapterClient {
       () => this.client.api.conversations.list({ cursor: options.cursor, limit: options.limit }),
       "listing conversations",
     );
-    return extractPage<BeeConversation>(body, ["conversations", "items", "data"]);
+    return extractPage<BeeConversation>(body, ["conversations", "items", "data"], "listing conversations");
   }
 
   async getConversation(id: string): Promise<BeeConversation | null> {
@@ -65,7 +71,7 @@ export class BeeAdapterClient {
       () => this.client.api.facts.list({ cursor: options.cursor, limit: options.limit }),
       "listing facts",
     );
-    return extractPage<BeeFact>(body, ["facts", "items", "data"]);
+    return extractPage<BeeFact>(body, ["facts", "items", "data"], "listing facts");
   }
 
   async listTodos(options: ListPageOptions = {}): Promise<Page<BeeTodo>> {
@@ -73,7 +79,7 @@ export class BeeAdapterClient {
       () => this.client.api.todos.list({ cursor: options.cursor, limit: options.limit }),
       "listing todos",
     );
-    return extractPage<BeeTodo>(body, ["todos", "items", "data"]);
+    return extractPage<BeeTodo>(body, ["todos", "items", "data"], "listing todos");
   }
 
   private async guarded<T>(fn: () => Promise<T>, action: string): Promise<T> {

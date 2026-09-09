@@ -17,8 +17,11 @@ function makeFakeBeeClient(overrides: Partial<BeeClient> = {}): BeeClient {
   const notImplemented = () => Promise.reject(new Error("not implemented in this fake"));
   return {
     auth: {
-      isAuthenticated: vi.fn().mockResolvedValue(true),
-      getProfile: notImplemented,
+      // getProfile, not isAuthenticated, is what BeeAdapterClient calls directly
+      // (see bee-client.ts) — isAuthenticated() swallows failures internally and
+      // is deliberately never called by this adapter.
+      getProfile: vi.fn().mockResolvedValue({ id: "profile_synthetic_001" }),
+      isAuthenticated: vi.fn(notImplemented),
       login: notImplemented,
       logout: notImplemented,
     },
@@ -62,18 +65,58 @@ function makeFakeBeeClient(overrides: Partial<BeeClient> = {}): BeeClient {
   } as unknown as BeeClient;
 }
 
+const enoentError = () => Object.assign(new Error("spawn bee ENOENT"), { code: "ENOENT" });
+const malformedJsonError = () => new Error("Failed to parse Bee CLI JSON output: Unexpected token");
+const genericCommandError = () => new Error("Bee CLI exited with code 1.");
+
 describe("BeeAdapterClient.ensureAuthenticated", () => {
   it("resolves when Bee reports an authenticated session", async () => {
     const client = new BeeAdapterClient({ client: makeFakeBeeClient() });
     await expect(client.ensureAuthenticated()).resolves.toBeUndefined();
   });
 
-  it("throws BeeAuthenticationError when Bee reports no session", async () => {
+  it("throws BeeAuthenticationError when the profile check fails for an unspecific reason (not logged in)", async () => {
     const fake = makeFakeBeeClient();
-    fake.auth.isAuthenticated = vi.fn().mockResolvedValue(false);
+    fake.auth.getProfile = vi.fn().mockRejectedValue(genericCommandError());
     const client = new BeeAdapterClient({ client: fake });
 
     await expect(client.ensureAuthenticated()).rejects.toBeInstanceOf(BeeAuthenticationError);
+  });
+
+  // This is the core regression: @beeai/cli/lib's own isAuthenticated() helper
+  // swallows ENOENT (bee executable missing) into a bare `false`, which this
+  // adapter must NOT report as "not authenticated" — the user needs to be told
+  // to install Bee CLI, not to run `bee login` against a CLI that doesn't exist.
+  it("distinguishes a missing bee executable (ENOENT) from an unauthenticated session", async () => {
+    const fake = makeFakeBeeClient();
+    fake.auth.getProfile = vi.fn().mockRejectedValue(enoentError());
+    const client = new BeeAdapterClient({ client: fake });
+
+    const error = await client.ensureAuthenticated().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BeeCliUnavailableError);
+    expect(error).not.toBeInstanceOf(BeeAuthenticationError);
+  });
+
+  it("throws BeeMalformedResponseError when the profile check returns unparseable JSON", async () => {
+    const fake = makeFakeBeeClient();
+    fake.auth.getProfile = vi.fn().mockRejectedValue(malformedJsonError());
+    const client = new BeeAdapterClient({ client: fake });
+
+    const error = await client.ensureAuthenticated().catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(BeeMalformedResponseError);
+    expect(error).not.toBeInstanceOf(BeeAuthenticationError);
+  });
+
+  it("never calls the collapsing isAuthenticated() helper", async () => {
+    const fake = makeFakeBeeClient();
+    const client = new BeeAdapterClient({ client: fake });
+
+    await client.ensureAuthenticated();
+
+    expect(fake.auth.isAuthenticated).not.toHaveBeenCalled();
+    expect(fake.auth.getProfile).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -87,7 +130,7 @@ describe("BeeAdapterClient list methods", () => {
     expect(page.nextCursor).toBe("cursor_synthetic_conversations_002");
   });
 
-  it("treats an empty facts list as a legitimate successful response", async () => {
+  it("treats a recognized-wrapper empty facts list as a legitimate successful response", async () => {
     const fake = makeFakeBeeClient();
     fake.api.facts.list = vi.fn().mockResolvedValue(syntheticEmptyFactListResponse);
     const client = new BeeAdapterClient({ client: fake });
@@ -98,7 +141,7 @@ describe("BeeAdapterClient list methods", () => {
     expect(page.nextCursor).toBeNull();
   });
 
-  it("treats an empty todos list as a legitimate successful response", async () => {
+  it("treats a recognized-wrapper empty todos list as a legitimate successful response", async () => {
     const fake = makeFakeBeeClient();
     fake.api.todos.list = vi.fn().mockResolvedValue(syntheticEmptyTodoListResponse);
     const client = new BeeAdapterClient({ client: fake });
@@ -107,6 +150,51 @@ describe("BeeAdapterClient list methods", () => {
 
     expect(page.items).toEqual([]);
     expect(page.nextCursor).toBeNull();
+  });
+
+  it("treats a bare empty array as a legitimate successful response", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.facts.list = vi.fn().mockResolvedValue([]);
+    const client = new BeeAdapterClient({ client: fake });
+
+    const page = await client.listFacts();
+
+    expect(page.items).toEqual([]);
+    expect(page.nextCursor).toBeNull();
+  });
+
+  // Core regression: an unrecognized shape must not be indistinguishable
+  // from a legitimate empty page — it must fail loudly instead.
+  it("throws BeeMalformedResponseError for facts when the response wrapper is unrecognized", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.facts.list = vi.fn().mockResolvedValue({ unexpected_shape: true });
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.listFacts()).rejects.toBeInstanceOf(BeeMalformedResponseError);
+  });
+
+  it("throws BeeMalformedResponseError for todos when the response wrapper is unrecognized", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.todos.list = vi.fn().mockResolvedValue({ unexpected_shape: true });
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.listTodos()).rejects.toBeInstanceOf(BeeMalformedResponseError);
+  });
+
+  it("throws BeeMalformedResponseError for conversations when the response wrapper is unrecognized", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.conversations.list = vi.fn().mockResolvedValue({ unexpected_shape: true });
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.listConversations()).rejects.toBeInstanceOf(BeeMalformedResponseError);
+  });
+
+  it("throws BeeMalformedResponseError when the response is a completely unexpected type", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.facts.list = vi.fn().mockResolvedValue("not even an object");
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.listFacts()).rejects.toBeInstanceOf(BeeMalformedResponseError);
   });
 });
 
@@ -132,11 +220,10 @@ describe("BeeAdapterClient.getConversation", () => {
   });
 });
 
-describe("BeeAdapterClient error classification", () => {
+describe("BeeAdapterClient error classification (data calls)", () => {
   it("wraps an ENOENT spawn failure in BeeCliUnavailableError", async () => {
     const fake = makeFakeBeeClient();
-    const enoent = Object.assign(new Error("spawn bee ENOENT"), { code: "ENOENT" });
-    fake.api.facts.list = vi.fn().mockRejectedValue(enoent);
+    fake.api.facts.list = vi.fn().mockRejectedValue(enoentError());
     const client = new BeeAdapterClient({ client: fake });
 
     await expect(client.listFacts()).rejects.toBeInstanceOf(BeeCliUnavailableError);
@@ -144,7 +231,7 @@ describe("BeeAdapterClient error classification", () => {
 
   it("wraps a JSON parse failure in BeeMalformedResponseError", async () => {
     const fake = makeFakeBeeClient();
-    fake.api.todos.list = vi.fn().mockRejectedValue(new Error("Failed to parse Bee CLI JSON output: Unexpected token"));
+    fake.api.todos.list = vi.fn().mockRejectedValue(malformedJsonError());
     const client = new BeeAdapterClient({ client: fake });
 
     await expect(client.listTodos()).rejects.toBeInstanceOf(BeeMalformedResponseError);
@@ -152,7 +239,7 @@ describe("BeeAdapterClient error classification", () => {
 
   it("wraps a generic non-zero exit in BeeCommandError", async () => {
     const fake = makeFakeBeeClient();
-    fake.api.conversations.list = vi.fn().mockRejectedValue(new Error("Bee CLI exited with code 1."));
+    fake.api.conversations.list = vi.fn().mockRejectedValue(genericCommandError());
     const client = new BeeAdapterClient({ client: fake });
 
     await expect(client.listConversations()).rejects.toBeInstanceOf(BeeCommandError);

@@ -48,8 +48,10 @@ something might need to change independently:
   - **schema adaptation & normalization** — `normalize/*.ts` maps raw Bee
     shapes onto contracts, never throwing on missing or malformed data.
   - **pagination metadata** — `pagination.ts` extracts a `Page<T>` (items +
-    `nextCursor`) from whatever wrapper shape a list response uses, so a
-    flat array never silently implies a complete dataset.
+    `nextCursor`) from a recognized list-response wrapper shape, so a flat
+    array never silently implies a complete dataset. An *unrecognized*
+    shape throws rather than becoming an indistinguishable "empty" page —
+    see `docs/BEE_INTEGRATION.md#pagination`.
   - **normalization warnings** — collected, never swallowed, surfaced all
     the way up to the CLI's warning count.
 

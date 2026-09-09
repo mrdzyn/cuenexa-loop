@@ -25,9 +25,13 @@ Authentication is entirely `bee login`'s responsibility. CueNexa Loop does
 not implement a login flow, does not read a token file, does not accept a
 credential as configuration, and does not store a Bee credential anywhere
 — on disk, in memory beyond the subprocess call itself, or in a log.
-`BeeAdapterClient.ensureAuthenticated()` only asks the `bee` CLI for a
-boolean (`auth.isAuthenticated()`); it never touches the underlying
-session token.
+`BeeAdapterClient.ensureAuthenticated()` only asks the `bee` CLI to fetch
+the developer profile (`auth.getProfile()`) and checks whether that
+succeeds; it never touches the underlying session token. (It calls
+`getProfile()` rather than `@beeai/cli/lib`'s own `isAuthenticated()`
+helper, which internally swallows every failure — including "the `bee`
+executable itself is missing" — into a bare `false`; see
+`docs/BEE_INTEGRATION.md` for why that distinction matters.)
 
 ## No hardcoded secrets
 
