@@ -1,0 +1,20 @@
+{
+  "name": "@cuenexa-loop/cli",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Phase 0 entrypoint: Bee -> @beeai/cli/lib -> Bee Adapter -> Normalized Contracts -> privacy-safe console output",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "cuenexa-loop": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "start": "node dist/index.js",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cuenexa-loop/bee-adapter": "*",
+    "@cuenexa-loop/contracts": "*"
+  }
+}

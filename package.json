@@ -1,0 +1,28 @@
+{
+  "name": "cuenexa-loop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Ambient follow-through intelligence powered by Bee",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*"
+  ],
+  "type": "module",
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "test": "vitest run",
+    "typecheck": "tsc -b --pretty",
+    "clean": "tsc -b --clean && rimraf packages/*/dist",
+    "start": "npm run start --workspace @cuenexa-loop/cli",
+    "bee:check": "npm run build && node packages/cli/dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "rimraf": "^5.0.7",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.11"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@cuenexa-loop/bee-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Official Bee (@beeai/cli/lib) client and normalizer, isolating Bee-specific behavior behind CueNexa Loop contracts",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@beeai/cli": "^0.7.3",
+    "@cuenexa-loop/contracts": "*"
+  }
+}
