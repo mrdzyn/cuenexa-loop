@@ -14,6 +14,7 @@ export default defineConfig({
     alias: [
       { find: "@cuenexa-loop/contracts", replacement: resolvePath("./packages/contracts/src/index.ts") },
       { find: "@cuenexa-loop/bee-adapter", replacement: resolvePath("./packages/bee-adapter/src/index.ts") },
+      { find: "@cuenexa-loop/loop-engine", replacement: resolvePath("./packages/loop-engine/src/index.ts") },
     ],
   },
 });

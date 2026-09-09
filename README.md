@@ -2,18 +2,19 @@
 
 Bee remembers what happened. CueNexa Loop helps you understand what remains unfinished.
 
-CueNexa Loop is an open-source companion project for Amazon Bee. It ingests
-Bee-derived data, normalizes it into CueNexa Loop-owned domain contracts,
-and — in later phases — will identify commitments, decisions, delegations,
-follow-ups, deadlines, open questions, and other unresolved conversational
-loops.
+CueNexa Loop is an open-source companion project for Amazon Bee. It
+ingests Bee-derived data, normalizes it into CueNexa Loop-owned domain
+contracts, and deterministically identifies individual commitments,
+decisions, delegations, follow-ups, and open questions (with deadlines
+resolved where confidently possible). Grouping related items across
+conversations into persistent, trackable "Loops" is a later phase (1B).
 
-## Phase 0 status
+## Status: Phase 0 + Phase 1A
 
-This repository currently implements **Phase 0 only**: Bee connectivity,
-the Bee adapter, normalization, and privacy-safe local verification. It
-does not yet detect, extract, or infer anything — it proves the data
-pipeline end-to-end and stops there.
+This repository implements **Phase 0** (Bee connectivity, normalization,
+privacy-safe local verification) and **Phase 1A** (deterministic Loop
+detection: commitments, decisions, delegations, follow-ups, and open
+questions, with deadline resolution where confidently possible).
 
 ```text
 Apple Watch
@@ -28,17 +29,22 @@ CueNexa Loop Bee Adapter
     ↓
 Normalized Contracts
     ↓
+Loop Detection Engine
+    ↓
+Structured Loop Items
+    ↓
 Privacy-Safe CLI
 ```
 
-Phase 0 explicitly does **not** include a UI, AWS, Amazon Bedrock, Strands,
-AgentCore, a database, production deployment, persistence of Bee data, or
-any AI-driven extraction/Loop intelligence (commitment, decision,
-delegation, follow-up, deadline, or open-question detection). See
-[docs/PRIVACY.md](docs/PRIVACY.md) and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-for the reasoning behind those boundaries, and
-[packages/loop-engine](packages/loop-engine) for the (currently
-type-only) architectural placeholder for that future work.
+Phase 1A is a **deterministic, local-only heuristic engine — not an LLM**.
+It does not yet correlate items across conversations into persistent
+"Loops" (that's Phase 1B). Neither phase includes a UI, AWS, Amazon
+Bedrock, Strands, AgentCore, a database, production deployment,
+persistence of Bee data, or any cloud/LLM-based extraction. See
+[docs/PRIVACY.md](docs/PRIVACY.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+and [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) for the reasoning
+behind those boundaries and exactly what the detection engine does and
+does not do.
 
 ## Repository layout
 
@@ -52,12 +58,14 @@ This is an npm-workspaces monorepo:
   `@beeai/cli/lib` client and normalizes Bee's responses onto the
   contracts above, defensively and without throwing on missing or
   reshaped fields. The only package that knows Bee's response shapes.
-- [packages/loop-engine](packages/loop-engine) — a Phase 1 architectural
-  placeholder only. Defines domain types (`Commitment`, `Decision`,
-  `Delegation`, `FollowUp`, `Deadline`, `OpenQuestion`, `Loop`) with no
-  detection logic whatsoever.
-- [packages/cli](packages/cli) — the Phase 0 entrypoint: wires the adapter
-  to a privacy-safe console presenter. No UI, no persistence.
+- [packages/loop-engine](packages/loop-engine) — the Phase 1A Loop
+  detection engine: deterministic, regex/heuristic detectors that turn
+  `LoopConversation`/`LoopFact`/`LoopTodo` into structured `LoopItem[]`.
+  No LLM, no persistence, no dependency on anything Bee-specific — only
+  on `@cuenexa-loop/contracts`. See [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
+- [packages/cli](packages/cli) — the CLI entrypoint: wires the adapter and
+  the detection engine to privacy-safe console presenters. No UI, no
+  persistence.
 
 ## Prerequisites
 
@@ -117,6 +125,38 @@ npm start -- --include-content
 See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly what each mode does and
 does not print.
 
+### Loop detection
+
+```bash
+npm run loops:check                    # structural counts only
+npm run loops:check -- --include-content  # redacted/truncated item text and evidence
+```
+
+```text
+CueNexa Loop — Detection Check
+
+Bee connection: OK
+
+Conversations processed: 5
+Facts processed: 12
+Todos processed: 3
+
+Commitments: 4
+Decisions: 2
+Delegations: 1
+Follow-ups: 3
+Deadlines: 2
+Open questions: 1
+
+Total Loop items: 13
+
+Detection warnings: 0
+Private content printed: NO
+```
+
+Same privacy split as `bee:check`: the default output never contains an
+item's text, owner, or evidence — see [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
+
 ## Configuration
 
 | Env var          | Default | Purpose                                                              |
@@ -129,20 +169,23 @@ does not print.
 npm run typecheck   # tsc project references, no emit
 npm test            # vitest, against synthetic fixtures only
 npm run build        # compile all packages to dist/
-npm run bee:check    # the real Phase 0 live acceptance test — see below
+npm run bee:check    # live Bee connectivity check — see below
+npm run loops:check   # live Loop detection check — see below
 ```
 
 Tests never touch a real Bee account: every fixture under
-`packages/bee-adapter/src/fixtures` is synthetic, invented for this repository.
+`packages/bee-adapter/src/fixtures` and `packages/loop-engine/src/fixtures`
+is synthetic, invented for this repository.
 
-### Live acceptance test
+### Live acceptance tests
 
-`npm run bee:check` builds the project and runs the same CLI, through the
-same Bee adapter, in its default (non-`--include-content`) mode — i.e. it
-*is* the connectivity-check output shown above, run for real against your
-already-authenticated Bee session. Run it yourself after `bee login`; CI
-never runs it (see [.github/workflows/ci.yml](.github/workflows/ci.yml)
-and [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md)).
+`npm run bee:check` and `npm run loops:check` both build the project and
+run the CLI for real against your already-authenticated Bee session, in
+each command's default (non-`--include-content`) mode — i.e. they *are*
+the connectivity-check / detection-check outputs shown above, run for
+real. Run them yourself after `bee login`; CI never runs either (see
+[.github/workflows/ci.yml](.github/workflows/ci.yml) and
+[docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md)).
 
 ## Documentation
 
@@ -150,6 +193,7 @@ and [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md)).
 - [docs/PRIVACY.md](docs/PRIVACY.md) — what data this touches, and what it deliberately never does.
 - [docs/SECURITY.md](docs/SECURITY.md) — trust boundaries, threat model, and reporting.
 - [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md) — how the Bee adapter uses `@beeai/cli/lib`.
+- [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) — what Loop items are, detection philosophy, confidence, dedup, and limitations.
 - [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) — structured friction notes for future contributors.
 
 ## License

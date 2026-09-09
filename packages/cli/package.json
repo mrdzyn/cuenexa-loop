@@ -2,7 +2,7 @@
   "name": "@cuenexa-loop/cli",
   "version": "0.1.0",
   "private": true,
-  "description": "Phase 0 entrypoint: Bee -> @beeai/cli/lib -> Bee Adapter -> Normalized Contracts -> privacy-safe console output",
+  "description": "CueNexa Loop CLI: Bee -> @beeai/cli/lib -> Bee Adapter -> Normalized Contracts -> Loop Detection Engine -> privacy-safe console output",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@cuenexa-loop/bee-adapter": "*",
-    "@cuenexa-loop/contracts": "*"
+    "@cuenexa-loop/contracts": "*",
+    "@cuenexa-loop/loop-engine": "*"
   }
 }

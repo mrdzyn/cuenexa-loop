@@ -67,11 +67,20 @@ installed `bee` CLI.
 
 Runtime dependencies are kept deliberately minimal:
 [`zod`](https://www.npmjs.com/package/zod) for schema validation in
-`@cuenexa-loop/contracts`, and [`@beeai/cli`](https://www.npmjs.com/package/@beeai/cli)
-(Bee's own official client library) in `@cuenexa-loop/bee-adapter`.
-Nothing else at runtime. A smaller dependency tree is a smaller
-supply-chain surface for a project that, by its nature, ends up close to
-someone's personal data.
+`@cuenexa-loop/contracts` and `@cuenexa-loop/loop-engine`, and
+[`@beeai/cli`](https://www.npmjs.com/package/@beeai/cli) (Bee's own
+official client library) in `@cuenexa-loop/bee-adapter`. Nothing else at
+runtime — `@cuenexa-loop/loop-engine` in particular adds zero new
+third-party dependencies and no network capability: its regex/heuristic
+detection logic uses only `zod` (already present) and Node/TypeScript
+built-ins. A smaller dependency tree is a smaller supply-chain surface
+for a project that, by its nature, ends up close to someone's personal
+data.
+
+`npm audit` is checked as part of every remediation pass and expected to
+report 0 vulnerabilities; when it doesn't, prefer the smallest version
+bump that actually clears every advisory over `npm audit fix --force`'s
+suggestion — see `docs/FRICTION-LOG.md` for a worked example.
 
 **Secret scanning recommendation:** enable GitHub's secret scanning and
 push protection on this repository (Settings → Code security). Given the
@@ -109,7 +118,7 @@ Every fixture used by `npm test` is synthetic — see `docs/PRIVACY.md`
 
 ## Reporting a vulnerability
 
-This is an early-stage, Phase 0 open-source project with no production
-deployment. If you find a security issue, please open a GitHub issue on
+This is an early-stage open-source project (Phase 0 + Phase 1A) with no
+production deployment. If you find a security issue, please open a GitHub issue on
 this repository describing the concern; avoid including any real Bee data
 in the report.
