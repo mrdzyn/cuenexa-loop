@@ -2,88 +2,151 @@
 
 ## What Phase 0 talks to
 
-CueNexa Loop talks to the **local Bee developer proxy**, not a hosted Bee
-API. This is the flow documented at
-[docs.bee.computer/docs/proxy](https://docs.bee.computer/docs/proxy) and
-[docs.bee.computer/docs](https://docs.bee.computer/docs):
+CueNexa Loop talks to Bee through the **official `@beeai/cli/lib`
+library**, not a hand-rolled HTTP client. This is the primary and only
+integration path — there is no local proxy to run, no HTTP endpoint to
+manage, and no bespoke authentication flow.
 
-1. Install the Bee CLI: `npm install -g @beeai/cli`.
-2. Enable Developer Mode in the Bee iOS app (tap the version number five
-   times in Settings).
-3. `bee login` — one-time device authentication against your Bee account.
-4. `bee proxy` — starts a local HTTP server, bound to `127.0.0.1`, default
-   port `8787` (or the next free port; a Unix domain socket at
-   `~/.bee/proxy.sock` is also available). This server is local-only and
-   unauthenticated by design — see [docs/SECURITY.md](SECURITY.md).
+```ts
+import { createBeeClient } from "@beeai/cli/lib";
 
-`BeeProxyClient` (`packages/bee-adapter/src/client.ts`) is a thin wrapper
-around three of that proxy's read endpoints:
+const bee = createBeeClient();
 
-| Endpoint               | Client method          |
-| ------------------------ | ------------------------- |
-| `GET /v1/conversations` | `listConversations()`   |
-| `GET /v1/facts`         | `listFacts()`            |
-| `GET /v1/todos`         | `listTodos()`             |
+await bee.auth.isAuthenticated();
+await bee.api.conversations.list();
+await bee.api.conversations.get(id);
+await bee.api.facts.list();
+await bee.api.todos.list();
+```
 
-The proxy also exposes write endpoints (`POST`/`PUT`/`DELETE` for facts and
-todos) and `GET /v1/conversations/:id`. Phase 0's client includes
-`getConversation(id)` for completeness but the CLI only reads list
-endpoints — Phase 0 has no reason to mutate Bee data.
+`createBeeClient()` returns a client whose `api` methods run the
+already-installed, already-authenticated `bee` CLI executable as a
+subprocess in JSON mode (`bee <command> --json`) and parse its stdout.
+Authentication is entirely the Bee CLI's responsibility:
+
+1. `npm install -g @beeai/cli`
+2. `bee login` — one-time device authentication.
+3. `bee status` — confirms an authenticated session exists.
+
+CueNexa Loop never reads, stores, or transmits a Bee credential itself —
+`BeeAdapterClient.ensureAuthenticated()` only calls
+`bee.auth.isAuthenticated()` and checks the boolean it returns.
+
+`BeeAdapterClient` (`packages/bee-adapter/src/bee-client.ts`) is the sole
+wrapper around this library in the codebase:
+
+| Bee capability                        | `BeeAdapterClient` method       |
+| --------------------------------------- | ---------------------------------- |
+| Authentication check                   | `ensureAuthenticated()`          |
+| `bee.api.conversations.list()`         | `listConversations(options?)`   |
+| `bee.api.conversations.get(id)`        | `getConversation(id)`            |
+| `bee.api.facts.list()`                 | `listFacts(options?)`            |
+| `bee.api.todos.list()`                 | `listTodos(options?)`             |
+
+No Bee response shape leaks past this file: everything above it in
+`@cuenexa-loop/cli` only ever sees `@cuenexa-loop/contracts` types.
+
+## Optional proxy fallback: none
+
+An earlier version of this adapter talked to Bee's local `bee proxy` HTTP
+server directly. That integration has been **fully removed**, not merely
+demoted — see [docs/FRICTION-LOG.md](FRICTION-LOG.md) for the history.
+There was no remaining justification for maintaining two integration
+paths once the official library covered the same functionality with a
+smaller trust surface (no locally-bound, unauthenticated HTTP server).
+Running `bee proxy` is not required for any part of the normal CueNexa
+Loop workflow.
 
 ## Why the raw types are defensive, not authoritative
 
-Bee does not publish a formal JSON schema for these endpoints. The field
-names in `packages/bee-adapter/src/raw-types.ts` (`short_summary`,
-`primary_location`, `transcriptions`, `confirmation_status`,
-`completion_status`, and so on) are a best-effort reconstruction from
-Bee's own developer documentation as of this writing, not a contract Bee
+`@beeai/cli/lib`'s own TypeScript declarations type the *call* surface
+precisely (`DataApi.facts.list(options?): Promise<T>`, etc.), but each
+method's *response* is a generic, caller-supplied `T` — the library itself
+does not publish a JSON schema for what Bee actually returns. The field
+names in `packages/bee-adapter/src/raw-types.ts` come from Bee's current
+record shapes as documented in the Phase 0 audit, not from a schema Bee
 has committed to. Consequently:
 
 - Every field on `BeeConversation`, `BeeFact`, and `BeeTodo` is optional
   and possibly-null.
+- **Facts**: `created_at` and `confirmed` (boolean) are the current,
+  authoritative fields, mapped to `capturedAt` and `status`
+  (`confirmed: true` → `"confirmed"`, `confirmed: false` → `"pending"`).
+  `timestamp` and `confirmation_status` are read only as a legacy
+  fallback when the current fields are absent — a real `confirmed: true`
+  fact never normalizes to `"unknown"`.
+- **Todos**: `created_at`, `alarm_at`, and `completed` (boolean) are
+  current and authoritative, mapped to `createdAt`, `dueAt`, and `status`.
+  `created`, `alarm`, and `completion_status` are legacy fallbacks only.
+- **Conversations**: utterances are nested two levels deep —
+  `transcriptions[]`, each with its own `utterances[]` — not a flat list.
+  The normalizer flattens `transcriptions[].utterances[]` into
+  `LoopConversation.utterances[]`, preferring each utterance's
+  `spoken_at` and falling back to `start` when `spoken_at` is absent. A
+  transcription with malformed or missing `utterances` contributes zero
+  utterances rather than throwing; it never silently drops a
+  well-formed sibling transcription's utterances.
+- **Conversation detail wrapper**: `bee.api.conversations.get(id)` may
+  return the conversation wrapped under a `"conversation"` key
+  (`{ "conversation": { "id": 123, ... } }`) rather than bare.
+  `BeeAdapterClient.getConversation` unwraps this — see the regression
+  tests in `packages/bee-adapter/src/__tests__/bee-client.test.ts`.
 - `normalizeConversation` / `normalizeFact` / `normalizeTodo`
-  (`packages/bee-adapter/src/normalize/`) never throw on a missing or
-  unexpected field — they default it and record a
-  `NormalizationWarning` instead. One field Bee renames in a future
-  release should degrade one field of one record, not crash the pipeline.
-- List endpoints are read defensively too: `BeeProxyClient` accepts either
-  a bare JSON array or an object wrapping the array under a named key
-  (`{ "conversations": [...] }`), since the exact wrapping wasn't
-  confirmed from documentation alone.
+  never throw on a missing or unexpected field — they default it, record
+  a `NormalizationWarning`, and validate the final record against its
+  Zod contract schema before returning.
+- List responses are read defensively: `extractPage` accepts a bare JSON
+  array or an object wrapping the array under `conversations`/`facts`/
+  `todos`/`items`/`data`, alongside an optional `next_cursor` — an
+  unrecognized wrapper shape produces an empty page rather than throwing.
 
-If your local `bee proxy --json` output uses different field names than
-what's in `raw-types.ts`, that file is the one place to update — extend
-it rather than loosening it to `any`, so the normalizer's defensiveness
-stays meaningful.
+If your local `bee <command> --json` output uses different field names
+than what's in `raw-types.ts`, that file is the one place to update —
+extend it rather than loosening it to `any`, so the normalizer's
+defensiveness stays meaningful.
 
-## Preflight check
+## Pagination
 
-`npm run bee:check` (`scripts/bee-check.mjs`) is a standalone script that
-only checks whether `BEE_PROXY_URL` responds to an HTTP request — it does
-not go through `BeeProxyClient` and does not read or print any
-conversation, fact, or todo content. Use it to confirm `bee proxy` is
-running before troubleshooting the CLI itself.
+Bee's list endpoints are cursor-paginated (`{ limit?, cursor? }` in,
+`next_cursor` out). Phase 0 does not implement historical synchronization
+— `fetchBeeSnapshot` fetches only the first page of conversations, facts,
+and todos. It does not silently imply that page is the whole dataset: each
+category's `Page<T>` carries a `nextCursor`, surfaced on
+`BeeSnapshot.pagination`, so a later phase (or a future Phase 0 change)
+has what it needs to page further without re-deriving it. A non-null
+`nextCursor` today just means "there's more" — nothing in Phase 0 acts on
+it yet.
 
 ## Error handling
 
-`BeeProxyClient` distinguishes two failure modes so the CLI can give
-actionable guidance instead of a raw stack trace:
+`BeeAdapterClient` classifies every failure from the underlying `bee`
+subprocess into one of four errors
+(`packages/bee-adapter/src/errors.ts`), so the CLI can give fixed,
+actionable, privacy-safe guidance instead of a raw stack trace or Bee CLI
+stderr text:
 
-- **`BeeConnectionError`** — the proxy couldn't be reached at all (most
-  commonly: `bee proxy` isn't running). The message tells the user to run
-  `bee login` once and `bee proxy` in a separate terminal.
-- **`BeeResponseError`** — the proxy responded, but with a non-2xx status.
-  Carries the HTTP status code for callers that want to branch on it.
+- **`BeeCliUnavailableError`** — the `bee` executable itself could not be
+  spawned (`ENOENT`); most commonly, Bee CLI isn't installed or isn't on
+  `PATH`.
+- **`BeeAuthenticationError`** — `bee.auth.isAuthenticated()` returned
+  `false`; the user needs to run `bee login`.
+- **`BeeCommandError`** — `bee` ran and exited non-zero for any other
+  reason (network issue, session expired mid-command, etc.).
+- **`BeeMalformedResponseError`** — `bee` exited zero but its stdout
+  wasn't valid JSON, most likely a Bee CLI version mismatch.
 
-## Known limitations of this integration (Phase 0)
+None of these error messages include the underlying command's raw
+stdout/stderr — see `packages/cli/src/error-report.ts` and
+`docs/SECURITY.md`.
 
-- Only the three read endpoints above are used; no writes, no
-  location-only endpoint, no daily-summary endpoint.
-- No pagination handling — `listConversations()` etc. return whatever the
-  proxy returns for an unparameterized `GET`. If your Bee history is large
-  and the proxy paginates, only the first page is read today.
-- No retry/backoff — a single failed request surfaces immediately as an
-  error rather than being retried.
+## Synthetic-only testing
 
-These are reasonable gaps for a Phase 0 foundation and are documented here
-so they're deliberate choices, not silent ones.
+Every fixture in `packages/bee-adapter/src/fixtures/synthetic-bee-data.ts`
+is invented for this repository: synthetic conversation list/detail
+responses (including the nested-transcription and wrapped-detail shapes
+above), fact and todo list responses, empty responses, missing-field
+records, malformed-field records, and pagination metadata (`next_cursor`).
+No real Bee transcripts, facts, todos, IDs, names, locations, or account
+information appear anywhere in this repository. `npm test` runs entirely
+against these fixtures; the only thing that touches a real, authenticated
+Bee session is `npm run bee:check`, run manually by the repository owner.

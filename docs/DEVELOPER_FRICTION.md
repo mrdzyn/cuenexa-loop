@@ -1,8 +1,20 @@
-# Developer friction log
+# Developer friction log (superseded)
 
-Notes for future contributors on rough edges hit while building Phase 0,
-and why the current tradeoffs were made. Add to this file rather than
-silently working around a new one.
+**This file is historical.** Ongoing friction notes now live in
+[docs/FRICTION-LOG.md](FRICTION-LOG.md), which uses a structured
+Date/Task/Steps/Expected/Actual/Severity/Workaround/Suggestion format and
+carries forward everything below that's still relevant after Phase 0's
+audit remediation (notably: this file's "custom HTTP proxy" integration
+was replaced by the official `@beeai/cli/lib` client — see
+[docs/BEE_INTEGRATION.md](BEE_INTEGRATION.md) — so the proxy-specific notes
+below no longer describe the current architecture). Kept for history;
+add new entries to `FRICTION-LOG.md` instead.
+
+---
+
+Notes for future contributors on rough edges hit while building the first
+version of Phase 0 (the custom Bee proxy HTTP client, since replaced), and
+why the tradeoffs at the time were made.
 
 ## Bee's API surface isn't formally documented
 

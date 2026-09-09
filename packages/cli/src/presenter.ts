@@ -8,9 +8,9 @@ const DEFAULT_PREVIEW_LENGTH = 120;
 
 /**
  * Defense-in-depth redaction applied to any free text before it is ever
- * printed to the console. Upstream summaries are already Bee-generated
- * prose, not raw PII fields, but this catches emails/phone numbers that
- * slip into conversational text regardless.
+ * printed to the console, in --include-content mode. Upstream summaries
+ * are already Bee-generated prose, not raw PII fields, but this catches
+ * emails/phone numbers that slip into conversational text regardless.
  */
 export function redact(text: string): string {
   return text.replace(EMAIL_PATTERN, "[redacted-email]").replace(PHONE_PATTERN, "[redacted-number]");
@@ -29,16 +29,50 @@ export function previewText(text: string, maxLength = DEFAULT_PREVIEW_LENGTH): s
   return truncate(redact(text), maxLength);
 }
 
+// ---------------------------------------------------------------------------
+// Default output: strict structural verification only. See docs/PRIVACY.md —
+// this must never contain a summary, transcript, fact/todo text, name,
+// address, or coordinate, synthetic or real.
+// ---------------------------------------------------------------------------
+
+/**
+ * The Phase 0 default report: a structural connectivity/normalization
+ * check with zero conversational content. This is also what
+ * `npm run bee:check` prints, since it runs the same adapter and the same
+ * default (non-`--include-content`) code path as `npm start`.
+ */
+export function renderConnectivityReport(snapshot: BeeSnapshot): string {
+  return [
+    "CueNexa Loop — Bee Connectivity Check",
+    "",
+    "Bee connection: OK",
+    `Conversations: ${snapshot.conversations.length}`,
+    `Facts: ${snapshot.facts.length}`,
+    `Todos: ${snapshot.todos.length}`,
+    `Normalization warnings: ${snapshot.warnings.length}`,
+    "Normalization: OK",
+    "Private content printed: NO",
+  ].join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// --include-content output: deliberate, explicit opt-in. Still redacts
+// emails/phone numbers, truncates long values, and never prints precise
+// latitude/longitude even here.
+// ---------------------------------------------------------------------------
+
 function renderConversationLine(conversation: LoopConversation): string {
   const when = conversation.startedAt ?? "unknown time";
   const device = conversation.deviceType ?? "unknown device";
   const summary = conversation.summary ? previewText(conversation.summary) : "(no summary provided)";
-  const locationNote = conversation.location ? " · location: on file (not printed)" : "";
-  const utteranceNote =
-    conversation.utterances.length > 0
-      ? ` · ${conversation.utterances.length} utterance(s) captured (not printed)`
-      : "";
-  return `  - [${conversation.id}] ${when} · ${device}${locationNote}\n    "${summary}"${utteranceNote}`;
+  const locationLabel = conversation.location?.label ? ` · location: ${previewText(conversation.location.label, 60)}` : "";
+
+  const lines = [`  - [${conversation.id}] ${when} · ${device}${locationLabel}`, `    "${summary}"`];
+  for (const utterance of conversation.utterances) {
+    const speaker = utterance.speaker ?? "unknown speaker";
+    lines.push(`    ${speaker}: "${previewText(utterance.text)}"`);
+  }
+  return lines.join("\n");
 }
 
 function renderFactLine(fact: LoopFact): string {
@@ -81,15 +115,15 @@ function renderWarnings(warnings: NormalizationWarning[]): string {
 }
 
 /**
- * Renders a BeeSnapshot as a privacy-safe console report: summaries and
- * fact/todo text are redacted and truncated, and raw utterance transcripts
- * and location details are never printed, only acknowledged as present.
- * Nothing here writes to disk or leaves the process.
+ * The explicit-opt-in report (`--include-content`). Redacts emails/phone
+ * numbers and truncates long text, but this is deliberate content
+ * inspection — unlike the default report, it does print summaries,
+ * fact/todo text, and utterance text. It still never prints precise
+ * latitude/longitude, only a redacted/truncated location label.
  */
-export function renderSnapshot(snapshot: BeeSnapshot, config: LoopConfig): string {
+export function renderContentReport(snapshot: BeeSnapshot, config: LoopConfig): string {
   const sections = [
-    "CueNexa Loop — Bee snapshot (privacy-safe console output)",
-    `Retrieved via ${config.beeProxyUrl}`,
+    "CueNexa Loop — Bee snapshot (--include-content: redacted and truncated, not raw)",
     "",
     renderSection("Conversations", snapshot.conversations, renderConversationLine, config.maxItemsPerCategory),
     "",

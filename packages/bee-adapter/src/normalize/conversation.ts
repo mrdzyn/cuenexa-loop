@@ -1,11 +1,12 @@
-import type {
-  LoopConversation,
-  LoopLocation,
-  LoopUtterance,
-  NormalizationResult,
-  NormalizationWarning,
+import {
+  LoopConversationSchema,
+  type LoopConversation,
+  type LoopLocation,
+  type LoopUtterance,
+  type NormalizationResult,
+  type NormalizationWarning,
 } from "@cuenexa-loop/contracts";
-import type { BeeConversation, BeeLocation, BeeUtterance } from "../raw-types.js";
+import type { BeeConversation, BeeLocation, BeeTranscription, BeeUtterance } from "../raw-types.js";
 import { coerceId, coerceText, coerceTimestamp, warnAndPlaceholder } from "./util.js";
 
 export function normalizeConversation(
@@ -31,10 +32,27 @@ export function normalizeConversation(
     detailedSummary: longSummary && longSummary !== shortSummary ? longSummary : null,
     location: normalizeLocation(raw.primary_location),
     deviceType: coerceText(raw.device_type),
-    utterances: (raw.transcriptions ?? raw.utterances ?? []).map(normalizeUtterance),
+    utterances: flattenUtterances(raw.transcriptions),
   };
 
-  return { record, warnings };
+  return { record: LoopConversationSchema.parse(record), warnings };
+}
+
+/**
+ * Bee nests utterances two levels deep: each conversation has
+ * `transcriptions[]`, and each transcription carries its own
+ * `utterances[]`. A transcription is a grouping, not an utterance itself
+ * — flatten fully rather than treating a transcription as one utterance,
+ * and never drop a transcription's utterances even if the transcription
+ * itself is missing other fields.
+ */
+function flattenUtterances(transcriptions: BeeTranscription[] | null | undefined): LoopUtterance[] {
+  if (!Array.isArray(transcriptions)) {
+    return [];
+  }
+  return transcriptions.flatMap((transcription) =>
+    Array.isArray(transcription.utterances) ? transcription.utterances.map(normalizeUtterance) : [],
+  );
 }
 
 function normalizeLocation(raw: BeeLocation | null | undefined): LoopLocation | null {
@@ -52,6 +70,7 @@ function normalizeUtterance(raw: BeeUtterance): LoopUtterance {
   return {
     speaker: coerceText(raw.speaker),
     text: coerceText(raw.text) ?? "",
-    spokenAt: coerceTimestamp(raw.timestamp),
+    // spoken_at is the authoritative spoken timestamp; start is a segment-relative fallback.
+    spokenAt: coerceTimestamp(raw.spoken_at ?? raw.start),
   };
 }

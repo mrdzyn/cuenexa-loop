@@ -1,3 +1,23 @@
+# --- CueNexa Loop / Bee data safety --------------------------------------
+# This repository is public. Phase 0 never persists Bee data by design
+# (see docs/PRIVACY.md), but these patterns exist so an accidental Bee
+# export, local database, or experimental data file is difficult to commit
+# even if that design is ever bypassed locally.
+.env
+.env.*
+!.env.example
+
+data/
+tmp/
+exports/
+bee-data/
+bee-sync/
+
+*.sqlite
+*.sqlite3
+*.db
+# ---------------------------------------------------------------------------
+
 # Logs
 logs
 *.log
@@ -65,10 +85,6 @@ web_modules/
 # Yarn Integrity file
 .yarn-integrity
 
-# dotenv environment variable files
-.env
-.env.*
-!.env.example
 
 # parcel-bundler cache (https://parceljs.org/)
 .cache

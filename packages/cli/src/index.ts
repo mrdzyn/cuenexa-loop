@@ -1,31 +1,26 @@
 #!/usr/bin/env node
-import { BeeConnectionError, BeeProxyClient, BeeResponseError, fetchBeeSnapshot } from "@cuenexa-loop/bee-adapter";
+import { BeeAdapterClient, fetchBeeSnapshot } from "@cuenexa-loop/bee-adapter";
+import { parseArgs } from "./args.js";
 import { loadConfig } from "./config.js";
-import { renderSnapshot } from "./presenter.js";
+import { renderBeeError } from "./error-report.js";
+import { renderConnectivityReport, renderContentReport } from "./presenter.js";
 
 async function main(): Promise<void> {
+  const { includeContent } = parseArgs(process.argv.slice(2));
   const config = loadConfig();
-  const client = new BeeProxyClient({ baseUrl: config.beeProxyUrl });
+  const client = new BeeAdapterClient();
 
   try {
+    await client.ensureAuthenticated();
     const snapshot = await fetchBeeSnapshot(client);
-    console.log(renderSnapshot(snapshot, config));
+    console.log(includeContent ? renderContentReport(snapshot, config) : renderConnectivityReport(snapshot));
   } catch (error) {
-    if (error instanceof BeeConnectionError) {
-      console.error(`CueNexa Loop could not reach Bee: ${error.message}`);
-      process.exitCode = 1;
-      return;
-    }
-    if (error instanceof BeeResponseError) {
-      console.error(`CueNexa Loop got an unexpected response from Bee: ${error.message}`);
-      process.exitCode = 1;
-      return;
-    }
-    throw error;
+    console.error(renderBeeError(error));
+    process.exitCode = 1;
   }
 }
 
 main().catch((error: unknown) => {
-  console.error("CueNexa Loop failed unexpectedly:", error);
+  console.error("CueNexa Loop failed unexpectedly:", error instanceof Error ? error.message : error);
   process.exitCode = 1;
 });

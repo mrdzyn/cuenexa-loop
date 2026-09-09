@@ -1,0 +1,19 @@
+{
+  "name": "@cuenexa-loop/loop-engine",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Architectural boundary for Phase 1 Loop intelligence — placeholder domain types only, no detection logic",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b"
+  }
+}

@@ -1,26 +1,58 @@
-/**
- * Thrown when the Bee proxy could not be reached at all — most commonly
- * because `bee proxy` isn't running locally. Kept distinct from
- * BeeResponseError so callers (e.g. the CLI) can print actionable, specific
- * guidance instead of a generic network error.
- */
-export class BeeConnectionError extends Error {
-  constructor(message: string, options?: { cause?: unknown }) {
+/** Base class for every error this adapter throws, so callers can catch just one type if they want. */
+export abstract class BeeAdapterError extends Error {
+  constructor(message: string) {
     super(message);
-    this.name = "BeeConnectionError";
-    if (options?.cause !== undefined) {
-      this.cause = options.cause;
-    }
+    this.name = new.target.name;
   }
 }
 
-/** Thrown when the Bee proxy responded, but with a non-2xx HTTP status. */
-export class BeeResponseError extends Error {
-  readonly status: number;
+/**
+ * The `bee` executable itself could not be found or launched (e.g. the
+ * subprocess spawn failed with ENOENT). Distinct from an authenticated-but-
+ * failing command so the CLI can point the user at installing Bee, not at
+ * `bee login`.
+ */
+export class BeeCliUnavailableError extends BeeAdapterError {}
 
-  constructor(message: string, status: number) {
-    super(message);
-    this.name = "BeeResponseError";
-    this.status = status;
+/**
+ * `bee` ran but reported the session is not authenticated
+ * (`auth.isAuthenticated()` returned false). CueNexa Loop never handles
+ * Bee credentials itself — this only tells the user to run `bee login`.
+ */
+export class BeeAuthenticationError extends BeeAdapterError {}
+
+/** `bee` launched but exited non-zero for a reason other than authentication. */
+export class BeeCommandError extends BeeAdapterError {}
+
+/** `bee` exited zero but its stdout was not valid JSON (or not the shape expected). */
+export class BeeMalformedResponseError extends BeeAdapterError {}
+
+/**
+ * Classifies an error thrown by the underlying `@beeai/cli/lib` runner
+ * into one of the errors above, without ever including raw stdout/stderr
+ * content in the resulting message — only Bee's own exit-code-driven
+ * failure text, which the CLI's error renderer discards anyway in favor of
+ * a fixed, actionable message per error type.
+ */
+export function classifyBeeError(error: unknown, action: string): BeeAdapterError {
+  if (isEnoent(error)) {
+    return new BeeCliUnavailableError(`Bee CLI not found while ${action}.`);
   }
+
+  const message = error instanceof Error ? error.message : String(error);
+
+  if (message.startsWith("Failed to parse Bee CLI JSON output")) {
+    return new BeeMalformedResponseError(`Bee CLI returned malformed JSON while ${action}.`);
+  }
+
+  return new BeeCommandError(`Bee CLI command failed while ${action}.`);
+}
+
+function isEnoent(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "ENOENT"
+  );
 }

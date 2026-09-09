@@ -3,55 +3,72 @@
 ## Phase 0 pipeline
 
 ```text
-Bee (iOS app + cloud account)
-  ↓  bee login (once) / bee proxy (long-running, local-only)
-Bee developer proxy — http://127.0.0.1:8787
-  ↓  HTTP GET, via BeeProxyClient (packages/bee-adapter/src/client.ts)
-Raw Bee responses — conversations, facts, todos
-  ↓  normalizeConversation / normalizeFact / normalizeTodo
-     (packages/bee-adapter/src/normalize/*.ts)
+Apple Watch
+    ↓
+Bee (captures, transcribes, summarizes)
+    ↓  bee login (once, out-of-band)
+Bee CLI authenticated environment (the `bee` executable on PATH)
+    ↓  createBeeClient() — @beeai/cli/lib
+BeeAdapterClient (packages/bee-adapter/src/bee-client.ts)
+    ↓  normalizeConversation / normalizeFact / normalizeTodo
+       (packages/bee-adapter/src/normalize/*.ts)
 CueNexa Loop contracts — LoopConversation, LoopFact, LoopTodo
      (packages/contracts/src/*.ts)
-  ↓  renderSnapshot (packages/cli/src/presenter.ts)
-Privacy-safe console output
+    ↓  renderConnectivityReport / renderContentReport
+       (packages/cli/src/presenter.ts)
+Privacy-Safe CLI output
 ```
 
-Everything after "Bee developer proxy" runs in a single short-lived Node
-process (`npm start` in `packages/cli`), in memory, and exits. Nothing in
-this pipeline writes to disk, opens a database, or makes an outbound
-request other than the one to the local proxy.
+Everything after "Bee CLI authenticated environment" runs in a single
+short-lived Node process (`npm start` in `packages/cli`), in memory, and
+exits. Nothing in this pipeline writes to disk, opens a database, or makes
+any network call itself — `@beeai/cli/lib` shells out to the already
+locally-authenticated `bee` executable, which is the only thing that
+talks to Bee's servers.
 
 ## Package boundaries
 
-The monorepo is split into three packages specifically so each boundary
-maps to a reason something might need to change independently:
+The monorepo is split into four packages, each mapped to a reason
+something might need to change independently:
 
-- **`@cuenexa-loop/contracts`** owns the domain model. It has no
-  dependency on Bee's wire format and no knowledge that Bee is the only
-  source — a second capture source (a different device, a manual import)
-  would produce the same `LoopConversation`/`LoopFact`/`LoopTodo` shapes.
-  Contracts are defined once as [Zod](https://zod.dev) schemas with
-  inferred TypeScript types, so runtime validation and compile-time types
-  can never drift apart.
+- **`@cuenexa-loop/contracts`** owns the domain model: provider-independent
+  normalized objects (`LoopConversation`, `LoopFact`, `LoopTodo`), a
+  generic `Page<T>` pagination type, and `NormalizationResult`/
+  `NormalizationWarning`. It has no dependency on Bee's wire format and no
+  knowledge that Bee is the only source. Contracts are defined once as
+  [Zod](https://zod.dev) schemas with inferred TypeScript types, so
+  runtime validation and compile-time types can never drift apart.
 
-- **`@cuenexa-loop/bee-adapter`** owns everything specific to Bee: the
-  HTTP client for the local proxy, best-effort raw response types, and the
-  normalizers that map those raw types onto contracts. This is the only
-  package that imports Bee's shapes. If Bee's response format changes, or
-  a second source is added later, the blast radius is contained here.
+- **`@cuenexa-loop/bee-adapter`** owns everything specific to Bee:
+  - **official Bee integration** — `BeeAdapterClient` wraps
+    `createBeeClient()` from `@beeai/cli/lib`; this is the only place in
+    the codebase that imports `@beeai/cli`.
+  - **interpreting Bee responses** — `raw-types.ts` models Bee's current
+    field names, with explicitly-labeled legacy fallbacks.
+  - **schema adaptation & normalization** — `normalize/*.ts` maps raw Bee
+    shapes onto contracts, never throwing on missing or malformed data.
+  - **pagination metadata** — `pagination.ts` extracts a `Page<T>` (items +
+    `nextCursor`) from whatever wrapper shape a list response uses, so a
+    flat array never silently implies a complete dataset.
+  - **normalization warnings** — collected, never swallowed, surfaced all
+    the way up to the CLI's warning count.
 
-- **`@cuenexa-loop/cli`** owns presentation and orchestration for Phase 0:
-  loading config, calling the adapter, and rendering a privacy-safe
-  console report. It has no business logic of its own — it composes the
-  other two packages.
+  No Bee response shape leaks past this package — everything above it
+  only ever sees `@cuenexa-loop/contracts` types.
 
-This split is also what "easy to extend" concretely means for this
-project: adding Loop intelligence (commitment/decision/follow-up
-detection) in a later phase means adding a new package that consumes
-`LoopConversation`/`LoopFact`/`LoopTodo` from `@cuenexa-loop/contracts`,
-without touching the Bee adapter or vice versa. Adding a second data
-source later means adding a second adapter package that also produces
-contracts, without touching the CLI's presentation logic.
+- **`@cuenexa-loop/loop-engine`** is reserved for Phase 1 Loop
+  intelligence (commitment/decision/delegation/follow-up/deadline/open-
+  question detection). In Phase 0 it contains only placeholder domain
+  types (`Commitment`, `Decision`, `Delegation`, `FollowUp`, `Deadline`,
+  `OpenQuestion`, `Loop`) and is not imported by any other package yet.
+  Establishing this boundary now means Phase 1 has an obvious place to
+  land without restructuring the adapter or CLI.
+
+- **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
+  live acceptance check (`npm run bee:check` runs this package's default
+  mode for real). It has no business logic of its own — it composes the
+  other packages and decides, based on `--include-content`, which
+  presenter to use.
 
 ## Why normalization never throws
 
@@ -59,11 +76,32 @@ contracts, without touching the CLI's presentation logic.
 on a malformed or partial raw record. Each returns a
 `NormalizationResult<T>` — the best contract-shaped record it could build,
 plus a list of `NormalizationWarning`s describing what it had to default
-or couldn't find. This is deliberate: Bee does not publish a formal JSON
-schema for these endpoints (see
-[docs/BEE_INTEGRATION.md](BEE_INTEGRATION.md)), so the adapter treats every
-field as possibly missing or reshaped by a future Bee release, and prefers
-degrading one field over discarding an entire conversation.
+or couldn't find — and then validates that record against the
+corresponding Zod schema (`LoopConversationSchema.parse`, etc.) before
+returning it. That validation call is a safety net, not a recovery
+mechanism: by the time it runs, the normalizer has already guaranteed
+every field is present with a correct type, so a validation failure would
+indicate a bug in the normalizer itself, not bad Bee data.
+
+```text
+Bee response
+    ↓
+Normalizer
+    ↓
+safe fallback + NormalizationWarning
+    ↓
+validated CueNexa contract (Zod .parse)
+```
+
+This is deliberate: `@beeai/cli/lib` types the *call* surface precisely
+(`DataApi.facts.list()` etc.) but leaves each method's *response* as a
+generic, uninspected `T` — Bee itself does not publish a formal JSON
+schema for the payloads. See
+[docs/BEE_INTEGRATION.md](BEE_INTEGRATION.md) and
+[docs/FRICTION-LOG.md](FRICTION-LOG.md) for more on this gap and how the
+adapter treats every field as possibly missing or reshaped by a future
+Bee release, preferring to degrade one field over discarding an entire
+record.
 
 ## Why there's no persistence layer
 
@@ -73,3 +111,15 @@ the responsibility of storing anyone's conversational data. See
 consequence is that there is no database package, no file-writing code
 path in the CLI, and no caching layer — `fetchBeeSnapshot` is called fresh
 on every run.
+
+## Why default output and `--include-content` are separate code paths
+
+`packages/cli/src/presenter.ts` exports two independent render functions —
+`renderConnectivityReport` (default) and `renderContentReport`
+(`--include-content`) — rather than one function with an internal
+if/else. The default path is built to be structurally incapable of
+containing conversational content: it only ever reads `.length` off the
+snapshot's arrays and a fixed set of status strings, never a record's
+`.text`, `.summary`, or `.location`. See
+[docs/PRIVACY.md](PRIVACY.md#strict-privacy-by-default-output) for what
+this guarantees and how it's tested.

@@ -5,7 +5,7 @@
   "description": "Ambient follow-through intelligence powered by Bee",
   "license": "MIT",
   "engines": {
-    "node": ">=18.17"
+    "node": ">=22"
   },
   "workspaces": [
     "packages/*"
@@ -17,10 +17,10 @@
     "typecheck": "tsc -b --pretty",
     "clean": "tsc -b --clean && rimraf packages/*/dist",
     "start": "npm run start --workspace @cuenexa-loop/cli",
-    "bee:check": "node scripts/bee-check.mjs"
+    "bee:check": "npm run build && node packages/cli/dist/index.js"
   },
   "devDependencies": {
-    "@types/node": "^20.14.0",
+    "@types/node": "^22.10.0",
     "rimraf": "^5.0.7",
     "typescript": "^5.5.4",
     "vitest": "^1.6.0"
