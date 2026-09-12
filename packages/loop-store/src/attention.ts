@@ -44,7 +44,8 @@ export function rankAttention(threads: readonly LoopThread[], events: readonly L
       if (thread.state === "open" && ageMs >= STALE_OPEN_DAYS * DAY_MS) reasons.add("stale_open");
       if (thread.state === "waiting" && ageMs >= WAITING_DAYS * DAY_MS) reasons.add("waiting_too_long");
       const reasonCodes = [...reasons].sort((left, right) => ATTENTION_PRIORITY[right] - ATTENTION_PRIORITY[left] || left.localeCompare(right));
-      return { thread, priority: reasonCodes.length === 0 ? 0 : ATTENTION_PRIORITY[reasonCodes[0]], reasonCodes };
+      const firstReason = reasonCodes[0];
+      return { thread, priority: firstReason ? ATTENTION_PRIORITY[firstReason] : 0, reasonCodes };
     })
     .filter((item) => item.reasonCodes.length > 0)
     .sort((left, right) => right.priority - left.priority || left.thread.id.localeCompare(right.thread.id));

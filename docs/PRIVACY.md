@@ -6,7 +6,7 @@ trustworthy with data that is, by nature, extremely personal — ambient
 transcripts of someone's conversations. Phase 0 and Phase 1 set the
 privacy posture the rest of the project builds on, around six principles.
 
-## No persistence
+## Phase 1: no persistence
 
 No Bee content, and no detected Loop item, is written to disk. There is
 no database, no cache, no file CueNexa Loop writes containing Bee data or
@@ -21,6 +21,23 @@ conversation-derived detection has real utterance text to work with, but
 that fuller content is held under the exact same "in memory only, this
 run only" rule — it is never cached to disk between runs, and hydration
 failures are reported only as a generic, content-free warning.
+
+## Phase 2: minimized local persistence
+
+Phase 2 adds one local SQLite file for follow-through continuity. It stores
+only a local thread ID, Phase 1 snapshot Loop IDs, hashed stable member
+identities, lifecycle state, normalized ISO due instant, timestamps, a
+derived title, and content-free structural change events. It never stores a
+Bee transcript, utterance, summary, raw LoopItem text/evidence, location,
+coordinates, person identity, credential, or raw correlation anchor. The
+database defaults to `~/.cuenexa-loop/cuenexa-loop.sqlite`, supports the
+`CUENEXA_LOOP_DB_PATH` override, uses best-effort owner-only permissions,
+and can be erased with `npm run loops:reset -- --yes`.
+
+Resolved local threads are retained for 30 days by default (bounded
+`CUENEXA_LOOP_RETENTION_DAYS`); active threads are never purged. No local
+state is sent anywhere: there is no telemetry, cloud service, LLM, vector
+database, UI, Bee write-back, or realtime listener.
 
 ## No real data in this repository
 

@@ -4,6 +4,7 @@
     { "path": "packages/contracts" },
     { "path": "packages/bee-adapter" },
     { "path": "packages/loop-engine" },
+    { "path": "packages/loop-store" },
     { "path": "packages/cli" }
   ]
 }

@@ -5,5 +5,5 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "references": [{ "path": "../contracts" }, { "path": "../bee-adapter" }, { "path": "../loop-engine" }]
+  "references": [{ "path": "../contracts" }, { "path": "../bee-adapter" }, { "path": "../loop-engine" }, { "path": "../loop-store" }]
 }

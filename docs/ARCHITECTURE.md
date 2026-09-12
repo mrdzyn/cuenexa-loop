@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 1 pipeline
+## Phase 1 and Phase 2 pipeline
 
 ```text
 Apple Watch
@@ -31,6 +31,14 @@ Structured snapshot-local Loops — Loop[]
        (packages/cli/src/*presenter.ts)
 Privacy-Safe CLI output
 ```
+
+For `loops:sync` only, the adapter uses a separate bounded full-pagination
+path, hydrates every fetched conversation, and explicitly marks a snapshot
+partial if a cursor repeats or a configured cap is reached. The pure Phase 1
+engine remains unchanged. `@cuenexa-loop/loop-store` then reconciles only
+the emitted Loop's derived structural fields into a persistent local thread;
+it never receives Bee records. `loops:today` ranks those local threads with
+fixed deterministic reason codes and makes no Bee request.
 
 Everything after "Bee CLI authenticated environment" runs in a single
 short-lived Node process (`npm start`, `npm run loops:check`, or

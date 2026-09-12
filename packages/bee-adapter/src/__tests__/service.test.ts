@@ -9,7 +9,7 @@ import {
   syntheticEmptyFactListResponse,
   syntheticEmptyTodoListResponse,
 } from "../fixtures/synthetic-bee-data.js";
-import { fetchBeeSnapshot, fetchDetectionSnapshot } from "../service.js";
+import { fetchBeeSnapshot, fetchCompleteDetectionSnapshot, fetchDetectionSnapshot } from "../service.js";
 
 function makeFakeBeeClient(overrides: Partial<BeeClient> = {}): BeeClient {
   const notImplemented = () => Promise.reject(new Error("not implemented in this fake"));
@@ -149,5 +149,31 @@ describe("fetchDetectionSnapshot (hydrates full conversation detail)", () => {
     for (const conversation of snapshot.conversations) {
       expect(conversation.utterances.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("fetchCompleteDetectionSnapshot (Phase 2 authoritative pagination)", () => {
+  it("collects every page, de-duplicates page boundaries, and hydrates all conversations", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.conversations.list = vi.fn()
+      .mockResolvedValueOnce({ conversations: [syntheticConversationSummary], next_cursor: "next" })
+      .mockResolvedValueOnce({ conversations: [syntheticConversationSummary, { ...syntheticConversationSummary, id: "conv_second" }], next_cursor: null });
+    fake.api.conversations.get = vi.fn(async (id: string) => ({ conversation: { ...syntheticConversation, id } })) as unknown as BeeClient["api"]["conversations"]["get"];
+    const complete = await fetchCompleteDetectionSnapshot(new BeeAdapterClient({ client: fake }));
+    expect(complete.complete).toBe(true);
+    expect(complete.snapshot.conversations).toHaveLength(2);
+    expect(fake.api.conversations.get).toHaveBeenCalledTimes(2);
+  });
+
+  it("marks a repeated cursor or configured cap as partial instead of claiming authoritative completeness", async () => {
+    const fake = makeFakeBeeClient();
+    fake.api.conversations.list = vi.fn().mockResolvedValue({ conversations: [syntheticConversationSummary], next_cursor: "again" });
+    const repeated = await fetchCompleteDetectionSnapshot(new BeeAdapterClient({ client: fake }), { maxPages: 3 });
+    expect(repeated.complete).toBe(false);
+    expect(repeated.snapshot.warnings.some((warning) => warning.message.includes("repeated"))).toBe(true);
+
+    const capped = await fetchCompleteDetectionSnapshot(new BeeAdapterClient({ client: makeFakeBeeClient() }), { maxPages: 1 });
+    expect(capped.complete).toBe(false);
+    expect(capped.snapshot.warnings.some((warning) => warning.message.includes("page cap"))).toBe(true);
   });
 });

@@ -82,6 +82,13 @@ export class LoopStore {
     preparePrivatePath(this.path);
     try {
       this.database = new DatabaseSync(this.path, { timeout: 5_000 });
+      if (this.path !== ":memory:") {
+        try {
+          chmodSync(this.path, 0o600);
+        } catch {
+          // Best effort: platforms without POSIX permissions remain supported.
+        }
+      }
       this.database.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
       this.initialize();
     } catch (error) {
@@ -264,6 +271,7 @@ export class LoopStore {
       .sort((left, right) => right.ratio - left.ratio || right.shared - left.shared || left.threadId.localeCompare(right.threadId));
     if (scored.length === 0) return null;
     const winner = scored[0];
+    if (!winner) return null;
     const tied = scored.filter((candidate) => candidate.ratio === winner.ratio && candidate.shared === winner.shared);
     if (tied.length > 1) {
       warnings.push(`Ambiguous member overlap for snapshot Loop ${snapshotLoopId}; created a separate local thread.`);
@@ -348,6 +356,8 @@ export function resetLoopStore(path = resolveLoopStorePath()): boolean {
   if (path === ":memory:") return false;
   if (!existsSync(path)) return false;
   rmSync(path);
+  rmSync(`${path}-wal`, { force: true });
+  rmSync(`${path}-shm`, { force: true });
   return true;
 }
 
