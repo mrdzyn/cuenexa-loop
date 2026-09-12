@@ -133,6 +133,14 @@ describe("scoreCorrelationPair", () => {
     expect(scoreCorrelationPair(action, weakDecision).rejectionReasonCodes).toContain("decision_requires_strong_anchor");
   });
 
+  it("accepts decision-to-action only with strong renewal-proposal anchors", () => {
+    const decision = makeItem("a", "conv-a", "We approved the renewal proposal.", { type: "decision" });
+    const action = makeItem("b", "conv-b", "I'll send the renewal proposal.");
+    const result = scoreCorrelationPair(decision, action, chronology);
+    expect(result.accepted).toBe(true);
+    expect(result.reasonCodes).toContain("decision_to_action");
+  });
+
   it("never turns a below-threshold score into a valid emitted link", () => {
     const result = scoreCorrelationPair(
       makeItem("a", "conv-a", "Prepare Azure detailed migration"),

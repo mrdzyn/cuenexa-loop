@@ -1,4 +1,3 @@
-import { capitalizeFirst } from "../text-utils.js";
 import type { LoopItem } from "../types.js";
 import { extractCorrelationAnchors } from "./anchors.js";
 
@@ -48,5 +47,12 @@ export function deriveLoopTitle(items: readonly LoopItem[]): string {
   );
 
   const title = candidates[0]?.value ?? "untitled loop";
-  return capitalizeFirst(title).slice(0, MAXIMUM_LOOP_TITLE_LENGTH).trim();
+  return titleCase(title).slice(0, MAXIMUM_LOOP_TITLE_LENGTH).trim();
+}
+
+function titleCase(value: string): string {
+  return value
+    .split(" ")
+    .map((token) => token.length > 0 ? `${token[0]?.toUpperCase() ?? ""}${token.slice(1)}` : token)
+    .join(" ");
 }

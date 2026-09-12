@@ -61,9 +61,9 @@ No Bee response shape leaks past this file: everything above it in
 snapshot builders with different scopes — `fetchBeeSnapshot` (list-only,
 used by `bee:check`) and `fetchDetectionSnapshot` (additionally hydrates
 each conversation's full detail via `getConversation(id)`, used by
-`loops:check`). See `docs/LOOP-DETECTION.md` ("Full conversation
-hydration") for why the distinction exists and how hydration failures are
-handled.
+`loops:check` and `loops:correlate`). See `docs/LOOP-DETECTION.md` ("Full
+conversation hydration") for why the distinction exists and how hydration
+failures are handled.
 
 ## Optional proxy fallback: none
 
@@ -225,9 +225,9 @@ records, malformed-field records, and pagination metadata (`next_cursor`).
 No real Bee transcripts, facts, todos, IDs, names, locations, or account
 information appear anywhere in this repository. `npm test` runs entirely
 against these fixtures; the only things that touch a real, authenticated
-Bee session are `npm run bee:check` and `npm run loops:check`, both run
-manually by the repository owner. `loops:check` additionally hydrates
-full conversation detail (see "Full conversation hydration" in
+Bee session are `npm run bee:check`, `npm run loops:check`, and
+`npm run loops:correlate`, all run manually by the repository owner. Both
+Loop commands hydrate full conversation detail (see "Full conversation hydration" in
 `docs/LOOP-DETECTION.md`) — real transcript content passes through
 process memory during that run, but is never written to disk and never
 printed unless `--include-content` is explicitly passed (and even then,

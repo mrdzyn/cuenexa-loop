@@ -5,16 +5,15 @@ Bee remembers what happened. CueNexa Loop helps you understand what remains unfi
 CueNexa Loop is an open-source companion project for Amazon Bee. It
 ingests Bee-derived data, normalizes it into CueNexa Loop-owned domain
 contracts, and deterministically identifies individual commitments,
-decisions, delegations, follow-ups, and open questions (with deadlines
-resolved where confidently possible). Grouping related items across
-conversations into persistent, trackable "Loops" is a later phase (1B).
+decisions, delegations, follow-ups, and open questions before correlating
+strongly related items across conversations into snapshot-local Loops.
 
-## Status: Phase 0 + Phase 1A
+## Status: Phase 1 complete
 
 This repository implements **Phase 0** (Bee connectivity, normalization,
-privacy-safe local verification) and **Phase 1A** (deterministic Loop
-detection: commitments, decisions, delegations, follow-ups, and open
-questions, with deadline resolution where confidently possible).
+privacy-safe local verification), **Phase 1A** (deterministic LoopItem
+detection), and **Phase 1B** (deterministic, stateless cross-conversation
+Loop correlation within one hydrated Bee snapshot).
 
 ```text
 Apple Watch
@@ -33,14 +32,20 @@ Loop Detection Engine
     ↓
 Structured Loop Items
     ↓
+Anchors → Eligibility → Deterministic Score (0.90 threshold)
+    ↓
+Complete-Link Grouping → Timeline / Lifecycle / Title
+    ↓
+Structured Loops
+    ↓
 Privacy-Safe CLI
 ```
 
-Phase 1A is a **deterministic, local-only heuristic engine — not an LLM**.
-It does not yet correlate items across conversations into persistent
-"Loops" (that's Phase 1B). Neither phase includes a UI, AWS, Amazon
-Bedrock, Strands, AgentCore, a database, production deployment,
-persistence of Bee data, or any cloud/LLM-based extraction. See
+Phase 1 is a **deterministic, local-only heuristic engine — not an LLM**.
+Phase 1B correlation is in-memory and stateless between invocations; it
+does not claim persistent tracking across snapshots. Phase 1 includes no
+UI, AWS, Amazon Bedrock, Strands, AgentCore, database, production
+deployment, persistence of Bee data, or cloud/LLM processing. See
 [docs/PRIVACY.md](docs/PRIVACY.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
 and [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) for the reasoning
 behind those boundaries and exactly what the detection engine does and
@@ -58,11 +63,12 @@ This is an npm-workspaces monorepo:
   `@beeai/cli/lib` client and normalizes Bee's responses onto the
   contracts above, defensively and without throwing on missing or
   reshaped fields. The only package that knows Bee's response shapes.
-- [packages/loop-engine](packages/loop-engine) — the Phase 1A Loop
-  detection engine: deterministic, regex/heuristic detectors that turn
-  `LoopConversation`/`LoopFact`/`LoopTodo` into structured `LoopItem[]`.
-  No LLM, no persistence, no dependency on anything Bee-specific — only
-  on `@cuenexa-loop/contracts`. See [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
+- [packages/loop-engine](packages/loop-engine) — Phase 1A detection plus
+  Phase 1B deterministic anchors, eligibility, scoring, complete-link
+  grouping, timeline, lifecycle, and title derivation. It has no Bee-
+  specific dependency, LLM, network access, or persistence. See
+  [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) and
+  [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md).
 - [packages/cli](packages/cli) — the CLI entrypoint: wires the adapter and
   the detection engine to privacy-safe console presenters. No UI, no
   persistence.
@@ -159,6 +165,20 @@ Private content printed: NO
 Same privacy split as `bee:check`: the default output never contains an
 item's text, owner, or evidence — see [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
 
+### Loop correlation
+
+```bash
+npm run loops:correlate                    # structural counts/status only
+npm run loops:correlate -- --include-content  # redacted/truncated Loop previews
+```
+
+The correlation command uses the same hydrated snapshot and Phase 1A
+detection path as `loops:check`, then correlates only high-confidence
+cross-conversation pairs. Default output contains counts, lifecycle totals,
+warning counts, completeness, and `Private content printed: NO`; it never
+reads Loop titles, member text, evidence, parties, due dates, locations, or
+raw anchors.
+
 Unlike `bee:check` (list-only, counts only), `loops:check` fetches each
 conversation's **full detail** (not just the list summary) so
 conversation-derived detection has real utterance text to work with — see
@@ -176,7 +196,7 @@ account time zone when available, otherwise your local system time zone
 | Env var          | Default | Purpose                                                              |
 | ----------------- | ------- | ---------------------------------------------------------------------- |
 | `LOOP_MAX_ITEMS`  | `5`     | Max conversations/facts/todos/Loop items printed per category in `--include-content` mode. |
-| `LOOP_TIMEZONE`   | (Bee's account time zone, else local system time zone) | IANA time zone override for resolving calendar phrases ("today", "tomorrow", weekday names) in `loops:check`. |
+| `LOOP_TIMEZONE`   | (Bee's account time zone, else local system time zone) | IANA time zone override for resolving calendar phrases in `loops:check` and `loops:correlate`. |
 
 ## Development
 
@@ -186,6 +206,7 @@ npm test            # vitest, against synthetic fixtures only
 npm run build        # compile all packages to dist/
 npm run bee:check    # live Bee connectivity check — see below
 npm run loops:check   # live Loop detection check — see below
+npm run loops:correlate # live snapshot-local Loop correlation check
 ```
 
 Tests never touch a real Bee account: every fixture under
@@ -194,11 +215,11 @@ is synthetic, invented for this repository.
 
 ### Live acceptance tests
 
-`npm run bee:check` and `npm run loops:check` both build the project and
-run the CLI for real against your already-authenticated Bee session, in
+`npm run bee:check`, `npm run loops:check`, and `npm run loops:correlate`
+build the project and run against your already-authenticated Bee session, in
 each command's default (non-`--include-content`) mode — i.e. they *are*
 the connectivity-check / detection-check outputs shown above, run for
-real. Run them yourself after `bee login`; CI never runs either (see
+real. Run them yourself after `bee login`; CI never runs any of them (see
 [.github/workflows/ci.yml](.github/workflows/ci.yml) and
 [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md)).
 
@@ -209,6 +230,7 @@ real. Run them yourself after `bee login`; CI never runs either (see
 - [docs/SECURITY.md](docs/SECURITY.md) — trust boundaries, threat model, and reporting.
 - [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md) — how the Bee adapter uses `@beeai/cli/lib`.
 - [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) — what Loop items are, detection philosophy, confidence, dedup, and limitations.
+- [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md) — deterministic scoring, complete-link grouping, lifecycle, timeline, titles, and correlation privacy.
 - [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) — structured friction notes for future contributors.
 
 ## License

@@ -84,6 +84,16 @@ describe("Phase 1B.1 Loop contracts", () => {
     expect(LoopSchema.safeParse(makeLoop([first, sameConversation])).success).toBe(false);
   });
 
+  it("requires a contiguous timeline that references each member exactly once", () => {
+    const loop = makeLoop([first, second]);
+    expect(LoopSchema.safeParse({ ...loop, timeline: [loop.timeline[0], loop.timeline[0]] }).success).toBe(false);
+    expect(LoopSchema.safeParse({ ...loop, timeline: loop.timeline.map((event) => ({ ...event, sequence: event.sequence + 1 })) }).success).toBe(false);
+  });
+
+  it("requires Loop confidence to equal the weakest link", () => {
+    expect(LoopSchema.safeParse({ ...makeLoop([first, second]), correlationConfidence: 1 }).success).toBe(false);
+  });
+
   it("rejects fabricated caller-controlled conversation metadata", () => {
     expect(
       LoopSchema.safeParse({ ...makeLoop([first, second]), sourceConversationIds: ["fabricated-a", "fabricated-b"] }).success,
@@ -107,7 +117,13 @@ describe("Phase 1B.1 Loop contracts", () => {
     const link = makeLoop([first, second]).correlationLinks[0]!;
     const loop = makeLoop([first, second]);
     expect(LoopCorrelationLinkSchema.safeParse({ ...link, confidence }).success).toBe(true);
-    expect(LoopSchema.safeParse({ ...loop, correlationConfidence: confidence }).success).toBe(true);
+    expect(
+      LoopSchema.safeParse({
+        ...loop,
+        correlationLinks: [{ ...link, confidence }],
+        correlationConfidence: confidence,
+      }).success,
+    ).toBe(true);
   });
 
   it.each([0, 0.89, -0.01, 1.01])("rejects non-emittable correlation confidence %s", (confidence) => {

@@ -16,12 +16,12 @@ function item(id: string, text: string): LoopItem {
 describe("deriveLoopTitle", () => {
   it("uses the dominant shared specific phrase instead of generic action language", () => {
     const items = [item("a", "Send the pricing deck"), item("b", "Please review the pricing deck"), item("c", "Finalize the pricing deck")];
-    expect(deriveLoopTitle(items)).toBe("Pricing deck");
+    expect(deriveLoopTitle(items)).toBe("Pricing Deck");
   });
 
   it("ranks by member coverage before deterministic lexical ties", () => {
     const items = [item("a", "Prepare Azure migration plan"), item("b", "Review Azure migration plan"), item("c", "Finalize Azure migration")];
-    expect(deriveLoopTitle(items)).toBe("Azure migration");
+    expect(deriveLoopTitle(items)).toBe("Azure Migration");
   });
 
   it("is independent of input order", () => {

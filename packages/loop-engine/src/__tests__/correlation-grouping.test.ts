@@ -1,6 +1,7 @@
 import type { LoopConversation } from "@cuenexa-loop/contracts";
 import { describe, expect, it } from "vitest";
 import { correlateLoopItems } from "../correlation/correlate.js";
+import { scoreCorrelationPair } from "../correlation/scoring.js";
 import { LoopItemSchema } from "../types.js";
 import type { LoopItem } from "../types.js";
 
@@ -63,6 +64,14 @@ describe("correlateLoopItems complete-link grouping", () => {
   const c = item("c", "conv-c", "I'll finalize the renewal proposal.");
 
   it("does not create a transitive three-member Loop when A-C is rejected", () => {
+    const context = { conversations: [
+      conversation("conv-a", "2026-02-01T10:00:00.000Z"),
+      conversation("conv-b", "2026-02-02T10:00:00.000Z"),
+      conversation("conv-c", "2026-02-03T10:00:00.000Z"),
+    ] };
+    expect(scoreCorrelationPair(a, b, context).accepted).toBe(true);
+    expect(scoreCorrelationPair(b, c, context).accepted).toBe(true);
+    expect(scoreCorrelationPair(a, c, context).accepted).toBe(false);
     const result = correlate([a, b, c]);
     expect(result.loops.every((loop) => loop.members.length < 3)).toBe(true);
     expect(result.loops).toHaveLength(1);
