@@ -74,6 +74,14 @@ their text, or their provisional signals are passed to `LoopStore`, `loop_events
 user preference tables, or the notification delivery ledger. The SQLite schema
 remains version 2 with no Phase 4 migration.
 
+Bee's realtime conversation UUID and historical numeric conversation ID are
+not treated as interchangeable. CueNexa retains at most 256 exact pairs in one
+foreground adapter process, solely when Bee supplies both values in the same
+documented conversation payload. It never derives that bridge from transcript content,
+titles, speakers, or timing, and it never persists the bridge. Without an
+explicit pair, a UUID-only provisional signal can only expire; processed
+history with a numeric ID does not retire it by guesswork.
+
 Only a separate, bounded call to the existing processed-history sync path may
 change persistent state. A realtime disconnect, correction, expiry, duplicate,
 or missing event never establishes completion, resolution, deletion, or any

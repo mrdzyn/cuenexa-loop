@@ -93,8 +93,11 @@ and trigger keys only, with a unique constraint enforcing exact deduplication.
 
 Phase 4 uses only the installed official `@beeai/cli/lib` 0.7.3
 `sse.streamJson` surface. Bee-specific payload parsing stays in the adapter;
-normalized IDs hash provider identities; malformed events and failures render
-fixed content-free messages. Buffers, parser text, refresh cadence, and
+the adapter structurally validates parsed `data:` JSON and does not rely on SSE
+metadata that the library discards. Structural IDs are memory-only; malformed
+events and failures render fixed content-free messages. The bounded identity
+bridge accepts only explicit provider-supplied UUID↔numeric-ID pairs, refuses
+conflicts, and never uses content. Buffers, parser text, refresh cadence, and
 reconnect attempts are bounded. Realtime has no direct `LoopStore` route: the
 watch coordinator can only request the existing authoritative historical sync,
 and provisional presentation never records notification delivery.

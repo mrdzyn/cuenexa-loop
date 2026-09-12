@@ -193,8 +193,11 @@ only in bounded process memory, and never create or mutate SQLite rows. Idle,
 processed-conversation, and realtime-gap hints can request the existing full
 historical path, rate-limited to one attempt per 60 seconds. The foreground
 runtime retries realtime at 1, 2, and 5 seconds, then stops; press `r` followed
-by Enter for an explicit rate-limited refresh. Existing commands remain
-independent. See
+by Enter for an explicit rate-limited refresh. Hints received during cooldown
+or an in-flight refresh coalesce into one deferred attempt rather than being
+dropped. Realtime UUIDs match historical numeric conversation IDs only after
+Bee explicitly supplies both in one conversation event; that bounded bridge is
+memory-only. Existing commands remain independent. See
 [docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md).
 
 ```text

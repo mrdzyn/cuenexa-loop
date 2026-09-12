@@ -6,6 +6,8 @@ import { renderProvisionalSignal } from "./provisional-presenter.js";
 import { renderReview } from "./review-presenter.js";
 
 const DEMO_NOW = "2026-09-12T08:00:00.000Z";
+const DEMO_REALTIME_UUID = "uuid-synthetic-demo";
+const DEMO_HISTORICAL_ID = "6531525";
 
 export interface SyntheticRealtimeDemoResult {
   readonly output: string;
@@ -28,7 +30,9 @@ export function runSyntheticRealtimeDemo(includeContent: boolean): SyntheticReal
     const processedLoop = syntheticProcessedLoop();
     store.reconcile({ loops: [processedLoop], observedAt: DEMO_NOW, complete: true });
     store.reconcile({ loops: [processedLoop], observedAt: DEMO_NOW, complete: true });
-    awareness.retireConversations(new Set(["conversation_synthetic_realtime"]));
+    // This exact pair models the provider's explicit new-conversation id+uuid payload.
+    awareness.resolveConversationIdentity(DEMO_REALTIME_UUID, DEMO_HISTORICAL_ID);
+    awareness.retireConversations(new Set([DEMO_HISTORICAL_ID]));
 
     const threads = store.listThreads();
     const events = store.listEvents(500);
@@ -66,8 +70,8 @@ export function runSyntheticRealtimeDemo(includeContent: boolean): SyntheticReal
 
 function syntheticRealtimeUtterance(): EphemeralRealtimeUtterance {
   return {
-    kind: "utterance", id: "event_synthetic_realtime", provider: "bee", providerEventId: "event_synthetic_realtime",
-    sessionId: null, conversationId: "conversation_synthetic_realtime", utteranceId: "utterance_synthetic_realtime",
+    kind: "utterance", id: "event_synthetic_realtime", provider: "bee", providerEventId: null,
+    sessionId: DEMO_REALTIME_UUID, conversationId: null, utteranceId: "utterance_synthetic_realtime",
     observedAt: DEMO_NOW, spokenAt: null,
     text: "I will send the synthetic pricing deck to demo@example.com tomorrow.", final: true,
   };
@@ -94,8 +98,8 @@ function processedItem(suffix: string): LoopItem {
   return {
     id: `item_synthetic_${suffix}`, type: "commitment", text: "Send synthetic pricing deck", state: "open",
     confidence: 0.95, owner: null, counterparties: [], dueAt: "2026-09-12T18:00:00.000Z", dueAtPhrase: "tomorrow",
-    source: { provider: "test", conversationId: `conversation_synthetic_${suffix}`, factId: null, todoId: null, utteranceIndexes: [0] },
-    evidence: [{ type: "utterance", sourceId: `conversation_synthetic_${suffix}`, text: "Synthetic evidence only" }],
+    source: { provider: "test", conversationId: suffix === "a" ? DEMO_HISTORICAL_ID : "6531526", factId: null, todoId: null, utteranceIndexes: [0] },
+    evidence: [{ type: "utterance", sourceId: suffix === "a" ? DEMO_HISTORICAL_ID : "6531526", text: "Synthetic evidence only" }],
     createdAt: DEMO_NOW, resolvedAt: null,
   };
 }

@@ -7,13 +7,13 @@ import {
 import { classifyBeeError } from "./errors.js";
 
 export const BEE_REALTIME_EVENT_TYPES = [
-  "connected",
   "new-utterance",
   "new-conversation",
   "update-conversation",
 ] as const;
 export const REALTIME_DEDUPE_LIMIT = 512;
 export const REALTIME_TEXT_LIMIT = 4_000;
+export const REALTIME_IDENTITY_BRIDGE_LIMIT = 256;
 
 export type BeeRealtimeWarningCode = "malformed_event" | "unsupported_event";
 
@@ -38,6 +38,7 @@ export interface BeeRealtimeSubscription {
 export function subscribeToBeeRealtime(
   client: Pick<BeeClient, "sse">,
   options: BeeRealtimeSubscribeOptions = {},
+  identities = new BeeConversationIdentityBridge(),
 ): BeeRealtimeSubscription {
   const now = options.now ?? (() => new Date().toISOString());
   const dedupeLimit = boundedDedupeLimit(options.dedupeLimit);
@@ -58,7 +59,7 @@ export function subscribeToBeeRealtime(
     const order: string[] = [];
     try {
       for await (const incoming of stream.events) {
-        const result = normalizeBeeRealtimeEvent(incoming.data, now());
+        const result = normalizeBeeRealtimeEvent(incoming.data, now(), identities);
         if ("warning" in result) {
           options.onWarning?.(result.warning);
           continue;
@@ -92,38 +93,48 @@ export function subscribeToBeeRealtime(
 export function normalizeBeeRealtimeEvent(
   input: unknown,
   observedAt: string,
+  identities = new BeeConversationIdentityBridge(),
 ): { event: EphemeralRealtimeEvent } | { warning: BeeRealtimeWarning } {
   if (!isRecord(input)) return malformed();
-  const eventName = stringValue(input.event) ?? stringValue(input.type);
-  if (!eventName) return malformed();
-  const payload = isRecord(input.data) ? input.data : input;
-  const providerEventId = stringValue(input.id);
+  const hasUtterance = "utterance" in input;
+  const hasConversation = "conversation" in input;
+  if (hasUtterance && hasConversation) return malformed();
 
   let candidate: unknown;
-  if (eventName === "connected") {
-    candidate = baseEvent("connection", providerEventId, null, observedAt, [eventName]);
-  } else if (eventName === "new-utterance") {
-    if (!isRecord(payload.utterance)) return malformed();
-    const text = stringValue(payload.utterance.text);
+  if (hasUtterance) {
+    if (!isRecord(input.utterance)) return malformed();
+    const text = stringValue(input.utterance.text);
     if (!text || text.length > REALTIME_TEXT_LIMIT) return malformed();
-    const conversationId = identifier(payload.conversation_uuid) ?? identifier(payload.conversation_id);
-    const utteranceId = identifier(payload.utterance.id) ?? identifier(payload.utterance.uuid);
+    const sessionId = identifier(input.conversation_uuid);
+    if (!sessionId) return malformed();
+    const conversationId = identities.authoritativeIdForUuid(sessionId);
+    const utteranceId = identifier(input.utterance.id) ?? identifier(input.utterance.uuid);
     candidate = {
-      ...baseEvent("utterance", providerEventId, conversationId, observedAt, [
-        eventName, conversationId, utteranceId, stringValue(payload.utterance.speaker), text,
+      ...baseEvent("utterance", conversationId, sessionId, observedAt, [
+        "utterance", sessionId, utteranceId, stringValue(input.utterance.speaker), text,
       ]),
       utteranceId,
-      spokenAt: isoInstant(payload.utterance.spoken_at),
+      spokenAt: isoInstant(input.utterance.spoken_at),
       text,
-      final: booleanValue(payload.utterance.final),
+      final: booleanValue(input.utterance.final),
     };
-  } else if (eventName === "new-conversation" || eventName === "update-conversation") {
-    if (!isRecord(payload.conversation)) return malformed();
-    const conversationId = identifier(payload.conversation.uuid) ?? identifier(payload.conversation.id);
+  } else if (hasConversation) {
+    if (!isRecord(input.conversation)) return malformed();
+    const explicitConversationId = numericIdentifier(input.conversation.id);
+    const explicitSessionId = identifier(input.conversation.uuid);
+    const state = stringValue(input.conversation.state);
+    if (!state || state.length > 64) return malformed();
+    if (explicitConversationId && explicitSessionId) {
+      if (!identities.remember(explicitSessionId, explicitConversationId)) return malformed();
+    }
+    const conversationId = explicitConversationId
+      ?? (explicitSessionId ? identities.authoritativeIdForUuid(explicitSessionId) : null);
     if (!conversationId) return malformed();
-    const state = stringValue(payload.conversation.state);
+    const sessionId = explicitSessionId ?? identities.uuidForAuthoritativeId(conversationId);
     candidate = {
-      ...baseEvent("conversation_state", providerEventId, conversationId, observedAt, [eventName, conversationId, state]),
+      ...baseEvent("conversation_state", conversationId, sessionId, observedAt, [
+        "conversation", conversationId, sessionId, state,
+      ]),
       state,
     };
   } else {
@@ -141,24 +152,67 @@ export function normalizeBeeRealtimeEvent(
 
 function baseEvent(
   kind: EphemeralRealtimeEvent["kind"],
-  providerEventId: string | null,
   conversationId: string | null,
+  sessionId: string | null,
   observedAt: string,
   identityParts: readonly unknown[],
 ) {
   const structuralId = createHash("sha256")
-    .update(JSON.stringify(providerEventId ? ["provider_event_id", providerEventId] : identityParts))
+    .update(JSON.stringify(identityParts))
     .digest("hex")
     .slice(0, 32);
   return {
     kind,
     id: `bee_rt_${structuralId}`,
     provider: "bee",
-    providerEventId,
-    sessionId: null,
+    providerEventId: null,
+    sessionId,
     conversationId,
     observedAt,
   };
+}
+
+/** Exact provider-observed UUID↔numeric-ID pairs, bounded to one subscription. */
+export class BeeConversationIdentityBridge {
+  private readonly byUuid = new Map<string, string>();
+  private readonly byAuthoritativeId = new Map<string, string>();
+  private readonly order: string[] = [];
+  private readonly boundedLimit: number;
+
+  constructor(limit = REALTIME_IDENTITY_BRIDGE_LIMIT) {
+    this.boundedLimit = Number.isInteger(limit)
+      ? Math.max(1, Math.min(1_024, limit))
+      : REALTIME_IDENTITY_BRIDGE_LIMIT;
+  }
+
+  remember(uuid: string, authoritativeId: string): boolean {
+    const normalizedUuid = stringValue(uuid);
+    const normalizedId = numericIdentifier(authoritativeId);
+    if (!normalizedUuid || normalizedUuid.length > 256 || !normalizedId || normalizedId.length > 256) return false;
+    const knownId = this.byUuid.get(normalizedUuid);
+    const knownUuid = this.byAuthoritativeId.get(normalizedId);
+    if ((knownId && knownId !== normalizedId) || (knownUuid && knownUuid !== normalizedUuid)) return false;
+    if (knownId === normalizedId) return true;
+    this.byUuid.set(normalizedUuid, normalizedId);
+    this.byAuthoritativeId.set(normalizedId, normalizedUuid);
+    this.order.push(normalizedUuid);
+    while (this.order.length > this.boundedLimit) {
+      const expiredUuid = this.order.shift();
+      if (!expiredUuid) break;
+      const expiredId = this.byUuid.get(expiredUuid);
+      this.byUuid.delete(expiredUuid);
+      if (expiredId) this.byAuthoritativeId.delete(expiredId);
+    }
+    return true;
+  }
+
+  authoritativeIdForUuid(uuid: string): string | null {
+    return this.byUuid.get(uuid) ?? null;
+  }
+
+  uuidForAuthoritativeId(authoritativeId: string): string | null {
+    return this.byAuthoritativeId.get(authoritativeId) ?? null;
+  }
 }
 
 function malformed(): { warning: BeeRealtimeWarning } {
@@ -186,6 +240,14 @@ function stringValue(value: unknown): string | null {
 function identifier(value: unknown): string | null {
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return stringValue(value);
+}
+
+function numericIdentifier(value: unknown): string | null {
+  if (typeof value === "number") {
+    return Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
+  }
+  const normalized = stringValue(value);
+  return normalized && /^(?:0|[1-9]\d*)$/.test(normalized) ? normalized : null;
 }
 
 function booleanValue(value: unknown): boolean | null {

@@ -2,78 +2,156 @@ import type { BeeClient, JsonSseEvent } from "@beeai/cli/lib";
 import { describe, expect, it, vi } from "vitest";
 import { BeeAdapterClient } from "../bee-client.js";
 import { BeeAuthenticationError, BeeCommandError } from "../errors.js";
-import { BEE_REALTIME_EVENT_TYPES, normalizeBeeRealtimeEvent } from "../realtime.js";
+import {
+  BEE_REALTIME_EVENT_TYPES,
+  BeeConversationIdentityBridge,
+  normalizeBeeRealtimeEvent,
+} from "../realtime.js";
 
 const NOW = "2026-09-12T08:00:00.000Z";
+const REALTIME_UUID = "uuid-synthetic-001";
+const HISTORICAL_ID = "6531525";
 
-describe("Bee realtime normalization", () => {
-  it("normalizes the documented new-utterance envelope without leaking Bee shape", () => {
-    const result = normalizeBeeRealtimeEvent({
-      event: "new-utterance",
-      id: "event_synthetic_001",
-      data: {
-        utterance: { id: "utterance_synthetic_001", text: "I will send the synthetic pricing deck.", speaker: "speaker_1", final: true },
-        conversation_uuid: "conversation_synthetic_001",
-      },
-    }, NOW);
+describe("Bee 0.7.3 realtime payload normalization", () => {
+  it("normalizes the documented raw new-utterance payload without an invented envelope", () => {
+    const result = normalizeBeeRealtimeEvent(utterancePayload("I will send the synthetic pricing deck."), NOW);
 
     expect(result).toEqual({ event: {
       kind: "utterance",
       id: expect.stringMatching(/^bee_rt_[a-f0-9]{32}$/),
       provider: "bee",
-      providerEventId: "event_synthetic_001",
-      sessionId: null,
-      conversationId: "conversation_synthetic_001",
+      providerEventId: null,
+      sessionId: REALTIME_UUID,
+      conversationId: null,
       observedAt: NOW,
-      utteranceId: "utterance_synthetic_001",
+      utteranceId: "utterance-synthetic-001",
       spokenAt: null,
       text: "I will send the synthetic pricing deck.",
       final: true,
     } });
   });
 
-  it("normalizes conversation state without copying title or summary content", () => {
+  it("normalizes a documented new-conversation payload and records its explicit UUID-to-ID bridge", () => {
+    const identities = new BeeConversationIdentityBridge();
     const result = normalizeBeeRealtimeEvent({
-      event: "update-conversation",
-      data: { conversation: { id: 42, state: "processed", title: "private synthetic title", short_summary: "private" } },
-    }, NOW);
+      conversation: { id: 6_531_525, uuid: REALTIME_UUID, state: "processing", title: "private synthetic title" },
+    }, NOW, identities);
 
     expect(result).toHaveProperty("event.kind", "conversation_state");
-    expect(result).toHaveProperty("event.conversationId", "42");
+    expect(result).toHaveProperty("event.conversationId", HISTORICAL_ID);
+    expect(result).toHaveProperty("event.sessionId", REALTIME_UUID);
+    expect(identities.authoritativeIdForUuid(REALTIME_UUID)).toBe(HISTORICAL_ID);
+    expect(JSON.stringify(result)).not.toContain("private synthetic title");
+  });
+
+  it("normalizes an updated/processed conversation and resolves its UUID only from the proven bridge", () => {
+    const identities = new BeeConversationIdentityBridge();
+    identities.remember(REALTIME_UUID, HISTORICAL_ID);
+    const result = normalizeBeeRealtimeEvent({
+      conversation: { id: 6_531_525, state: "processed", title: "private", short_summary: "private" },
+    }, NOW, identities);
+
+    expect(result).toHaveProperty("event.kind", "conversation_state");
+    expect(result).toHaveProperty("event.state", "processed");
+    expect(result).toHaveProperty("event.conversationId", HISTORICAL_ID);
+    expect(result).toHaveProperty("event.sessionId", REALTIME_UUID);
     expect(JSON.stringify(result)).not.toContain("private");
   });
 
-  it("returns fixed content-free warnings for malformed and unsupported events", () => {
-    expect(normalizeBeeRealtimeEvent({ event: "new-utterance", data: { utterance: {} } }, NOW)).toEqual({
+  it("resolves later utterances to a historical ID only after an explicit Bee pair was observed", () => {
+    const identities = new BeeConversationIdentityBridge();
+    expect(normalizeBeeRealtimeEvent(utterancePayload("First fragment"), NOW, identities))
+      .toHaveProperty("event.conversationId", null);
+    normalizeBeeRealtimeEvent({ conversation: { id: 6_531_525, uuid: REALTIME_UUID, state: "processing" } }, NOW, identities);
+    expect(normalizeBeeRealtimeEvent(utterancePayload("Later fragment"), NOW, identities))
+      .toHaveProperty("event.conversationId", HISTORICAL_ID);
+  });
+
+  it("refuses conflicting UUID-to-ID mappings", () => {
+    const identities = new BeeConversationIdentityBridge();
+    expect(identities.remember(REALTIME_UUID, HISTORICAL_ID)).toBe(true);
+    expect(identities.remember(REALTIME_UUID, "9999999")).toBe(false);
+    expect(identities.authoritativeIdForUuid(REALTIME_UUID)).toBe(HISTORICAL_ID);
+    expect(normalizeBeeRealtimeEvent({
+      conversation: { id: 9_999_999, uuid: REALTIME_UUID, state: "processed" },
+    }, NOW, identities)).toHaveProperty("warning.code", "malformed_event");
+  });
+
+  it("bounds the in-memory identity bridge and forgets its oldest explicit pair", () => {
+    const identities = new BeeConversationIdentityBridge(1);
+    expect(identities.remember(REALTIME_UUID, HISTORICAL_ID)).toBe(true);
+    expect(identities.remember("uuid-synthetic-002", "6531526")).toBe(true);
+    expect(identities.authoritativeIdForUuid(REALTIME_UUID)).toBeNull();
+    expect(identities.uuidForAuthoritativeId(HISTORICAL_ID)).toBeNull();
+    expect(identities.authoritativeIdForUuid("uuid-synthetic-002")).toBe("6531526");
+  });
+
+  it("returns fixed content-free warnings for malformed and unsupported raw payloads", () => {
+    const identities = new BeeConversationIdentityBridge();
+    expect(normalizeBeeRealtimeEvent({ utterance: {}, conversation_uuid: REALTIME_UUID }, NOW)).toEqual({
       warning: { code: "malformed_event", message: "Bee realtime event was malformed and was ignored." },
     });
-    expect(normalizeBeeRealtimeEvent({ event: "todo-created", data: { todo: { text: "secret" } } }, NOW)).toEqual({
+    expect(normalizeBeeRealtimeEvent({
+      conversation: { id: "not-a-numeric-history-id", uuid: REALTIME_UUID, state: "processed" },
+    }, NOW)).toHaveProperty("warning.code", "malformed_event");
+    expect(normalizeBeeRealtimeEvent({
+      conversation: { id: 6_531_525, uuid: REALTIME_UUID },
+    }, NOW, identities)).toHaveProperty("warning.code", "malformed_event");
+    expect(identities.authoritativeIdForUuid(REALTIME_UUID)).toBeNull();
+    expect(normalizeBeeRealtimeEvent({ todo: { text: "secret" } }, NOW)).toEqual({
       warning: { code: "unsupported_event", message: "Bee realtime event type is not supported and was ignored." },
     });
   });
 });
 
 describe("Bee realtime subscription", () => {
-  it("uses the official streamJson surface and deduplicates provider event IDs", async () => {
+  it("requests only identifiable event types and deduplicates identical raw utterances", async () => {
     const streamJson = vi.fn(() => fakeStream([
-      envelope("event_synthetic_001", "First synthetic fragment"),
-      envelope("event_synthetic_001", "Duplicate synthetic fragment"),
-      envelope("event_synthetic_002", "Second synthetic fragment"),
+      utterancePayload("Identical synthetic fragment"),
+      utterancePayload("Identical synthetic fragment"),
+      utterancePayload("Different synthetic fragment", "utterance-synthetic-002"),
     ]));
     const client = new BeeAdapterClient({ client: fakeClient(streamJson) });
 
-    const subscription = client.subscribeRealtime({ now: () => NOW });
-    const events = await collect(subscription.events);
+    const events = await collect(client.subscribeRealtime({ now: () => NOW }).events);
 
+    expect(BEE_REALTIME_EVENT_TYPES).toEqual(["new-utterance", "new-conversation", "update-conversation"]);
     expect(streamJson).toHaveBeenCalledWith({ types: [...BEE_REALTIME_EVENT_TYPES], signal: undefined });
-    expect(events.map((event) => event.providerEventId)).toEqual(["event_synthetic_001", "event_synthetic_002"]);
+    expect(events).toHaveLength(2);
+    expect(events.every((event) => event.providerEventId === null)).toBe(true);
   });
 
-  it("reports malformed events and continues with later valid events", async () => {
+  it("shares the bounded identity bridge across raw payloads in one subscription", async () => {
+    const client = new BeeAdapterClient({ client: fakeClient(() => fakeStream([
+      utterancePayload("Before mapping", "utterance-before"),
+      { conversation: { id: 6_531_525, uuid: REALTIME_UUID, state: "processing" } },
+      utterancePayload("After mapping", "utterance-after"),
+    ])) });
+
+    const events = await collect(client.subscribeRealtime({ now: () => NOW }).events);
+    expect(events.map((event) => event.conversationId)).toEqual([null, HISTORICAL_ID, HISTORICAL_ID]);
+  });
+
+  it("retains proven identity pairs across reconnect subscriptions in one adapter process", async () => {
+    const streamJson = vi.fn()
+      .mockReturnValueOnce(fakeStream([
+        { conversation: { id: 6_531_525, uuid: REALTIME_UUID, state: "processing" } },
+      ]))
+      .mockReturnValueOnce(fakeStream([
+        utterancePayload("After reconnect", "utterance-after-reconnect"),
+      ]));
+    const client = new BeeAdapterClient({ client: fakeClient(streamJson) });
+
+    await collect(client.subscribeRealtime({ now: () => NOW }).events);
+    const afterReconnect = await collect(client.subscribeRealtime({ now: () => NOW }).events);
+    expect(afterReconnect[0]?.conversationId).toBe(HISTORICAL_ID);
+  });
+
+  it("reports a malformed raw payload and continues with a later valid payload", async () => {
     const warnings: string[] = [];
     const client = new BeeAdapterClient({ client: fakeClient(() => fakeStream([
-      { event: "new-utterance", data: { utterance: {} } },
-      envelope("event_synthetic_002", "Valid synthetic fragment"),
+      { utterance: {}, conversation_uuid: REALTIME_UUID },
+      utterancePayload("Valid synthetic fragment"),
     ])) });
 
     const events = await collect(client.subscribeRealtime({
@@ -118,8 +196,11 @@ describe("Bee realtime subscription", () => {
   });
 });
 
-function envelope(id: string, text: string): unknown {
-  return { event: "new-utterance", id, data: { utterance: { text }, conversation_uuid: "conversation_synthetic_001" } };
+function utterancePayload(text: string, id = "utterance-synthetic-001"): unknown {
+  return {
+    utterance: { id, text, speaker: "speaker_1", final: true },
+    conversation_uuid: REALTIME_UUID,
+  };
 }
 
 function fakeStream(values: readonly unknown[]) {

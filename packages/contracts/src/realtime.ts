@@ -26,15 +26,8 @@ export const EphemeralRealtimeConversationStateSchema = EphemeralRealtimeBaseSch
 });
 export type EphemeralRealtimeConversationState = z.infer<typeof EphemeralRealtimeConversationStateSchema>;
 
-/** Structural connection observation; never evidence that a conversation started or ended. */
-export const EphemeralRealtimeConnectionSchema = EphemeralRealtimeBaseSchema.extend({
-  kind: z.literal("connection"),
-});
-export type EphemeralRealtimeConnection = z.infer<typeof EphemeralRealtimeConnectionSchema>;
-
 export const EphemeralRealtimeEventSchema = z.discriminatedUnion("kind", [
   EphemeralRealtimeUtteranceSchema,
   EphemeralRealtimeConversationStateSchema,
-  EphemeralRealtimeConnectionSchema,
 ]);
 export type EphemeralRealtimeEvent = z.infer<typeof EphemeralRealtimeEventSchema>;

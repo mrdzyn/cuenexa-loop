@@ -78,6 +78,8 @@ export async function runAmbientWatch(
           coordinator.expire(current);
           if (dependencies.consumeManualRefreshRequest?.()) {
             authoritativeRefreshes += await refreshAndRender(coordinator, "manual", dependencies, includeContent, current);
+          } else if (coordinator.pendingRefreshDue(current)) {
+            authoritativeRefreshes += await flushPendingAndRender(coordinator, dependencies, includeContent, current);
           } else if (coordinator.idleRefreshDue(current)) {
             authoritativeRefreshes += await refreshAndRender(coordinator, "idle", dependencies, includeContent, current);
           }
@@ -113,6 +115,18 @@ export async function runAmbientWatch(
     await wait(WATCH_RECONNECT_BACKOFF_MS[attempt]!, signal);
   }
 
+  if (!signal.aborted) {
+    const pendingDelay = coordinator.pendingRefreshDelayMs(now());
+    if (pendingDelay !== null) {
+      await wait(pendingDelay, signal);
+      if (!signal.aborted) {
+        authoritativeRefreshes += await flushPendingAndRender(
+          coordinator, dependencies, includeContent, now(),
+        );
+      }
+    }
+  }
+
   return { subscriptionsOpened, reconnectsAttempted, authoritativeRefreshes };
 }
 
@@ -125,6 +139,22 @@ async function refreshAndRender(
 ): Promise<number> {
   try {
     const refreshed = await coordinator.refresh(trigger, now);
+    renderAuthoritativeUpdate(dependencies, refreshed.result, includeContent, now);
+    return refreshed.attempted ? 1 : 0;
+  } catch {
+    dependencies.output("Authoritative refresh unavailable — existing persistent state remains available.");
+    return 0;
+  }
+}
+
+async function flushPendingAndRender(
+  coordinator: RealtimeHandoffCoordinator,
+  dependencies: WatchRuntimeDependencies,
+  includeContent: boolean,
+  now: string,
+): Promise<number> {
+  try {
+    const refreshed = await coordinator.flushPending(now);
     renderAuthoritativeUpdate(dependencies, refreshed.result, includeContent, now);
     return refreshed.attempted ? 1 : 0;
   } catch {

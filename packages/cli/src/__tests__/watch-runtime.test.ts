@@ -4,6 +4,7 @@ import type { NotificationPlan, ReviewModel } from "@cuenexa-loop/loop-store";
 import { describe, expect, it, vi } from "vitest";
 import { runAmbientWatch, WATCH_RECONNECT_BACKOFF_MS, WATCH_TICK_MS } from "../watch-runtime.js";
 import type { AuthoritativeSyncResult } from "../persistent-orchestration.js";
+import { REALTIME_MIN_REFRESH_INTERVAL_MS } from "../realtime-orchestration.js";
 
 const NOW = "2026-09-12T08:00:00.000Z";
 
@@ -48,27 +49,37 @@ describe("ambient watch runtime", () => {
   it("keeps persistent review visible and bounds reconnects when realtime fails", async () => {
     const output: string[] = [];
     const subscribe = vi.fn(() => { throw new Error("synthetic private transport detail"); });
-    const wait = vi.fn(async (_milliseconds: number, _signal: AbortSignal) => undefined);
-    const result = await runAmbientWatch({ ...dependencies(output), subscribe, wait }, new AbortController().signal);
+    const time = advancingTime();
+    const wait = vi.fn(time.wait);
+    const result = await runAmbientWatch({
+      ...dependencies(output), subscribe, wait, now: time.now,
+    }, new AbortController().signal);
     expect(output.some((line) => line.includes("CueNexa Loop — Follow Through"))).toBe(true);
     expect(output.some((line) => line === "Realtime unavailable — authoritative CueNexa state remains available.")).toBe(true);
     expect(output.join("\n")).not.toContain("synthetic private transport detail");
     expect(subscribe).toHaveBeenCalledTimes(WATCH_RECONNECT_BACKOFF_MS.length + 1);
     expect(result.reconnectsAttempted).toBe(WATCH_RECONNECT_BACKOFF_MS.length);
-    expect(wait.mock.calls.map((call) => call[0])).toEqual([...WATCH_RECONNECT_BACKOFF_MS]);
+    expect(wait.mock.calls.map((call) => call[0])).toEqual([
+      ...WATCH_RECONNECT_BACKOFF_MS,
+      REALTIME_MIN_REFRESH_INTERVAL_MS - WATCH_RECONNECT_BACKOFF_MS.reduce((sum, value) => sum + value, 0),
+    ]);
   });
 
-  it("performs at most one rate-limited authoritative repair across rapid gaps", async () => {
+  it("does not lose a gap immediately after initial sync and coalesces rapid gaps into one permitted repair", async () => {
     const refresh = vi.fn(async () => syncResult());
+    const time = advancingTime();
+    const wait = vi.fn(time.wait);
     const result = await runAmbientWatch({
       ...dependencies([]),
       authoritativeRefresh: refresh,
       subscribe: () => stream([]),
-      wait: async () => undefined,
-      now: clockAfterInitialSync(),
+      wait,
+      now: time.now,
     }, new AbortController().signal);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(result.authoritativeRefreshes).toBe(1);
+    expect(wait.mock.calls.length).toBeLessThanOrEqual(16);
+    expect(time.elapsed()).toBe(REALTIME_MIN_REFRESH_INTERVAL_MS);
   });
 
   it("does not record notifications when authoritative changes are displayed", async () => {
@@ -111,6 +122,43 @@ describe("ambient watch runtime", () => {
     expect(result.reconnectsAttempted).toBe(0);
     expect(close).toHaveBeenCalledOnce();
     expect(output.join("\n")).not.toContain("synthetic private history error");
+  });
+
+  it("renders refresh failure safely and performs only one deferred retry at the next permitted time", async () => {
+    const controller = new AbortController();
+    const close = vi.fn();
+    const output: string[] = [];
+    const changed = syncResult({
+      events: [{ id: "event_retry", threadId: "thread_synthetic", type: "new_activity", observedAt: NOW, details: {} }],
+    });
+    const refresh = vi.fn()
+      .mockRejectedValueOnce(new Error("synthetic private history error"))
+      .mockResolvedValueOnce(changed);
+    const time = timeAfterInitialSync();
+    const wait = vi.fn(time.wait);
+    const events = (async function* () {
+      yield processedConversation();
+      await new Promise<void>(() => undefined);
+    })();
+
+    await runAmbientWatch({
+      ...dependencies(output),
+      authoritativeRefresh: refresh,
+      subscribe: () => ({ events, close }),
+      now: time.now,
+      wait,
+      output: (text) => {
+        output.push(text);
+        if (text.startsWith("AUTHORITATIVE")) controller.abort();
+      },
+    }, controller.signal);
+
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(wait.mock.calls.length).toBeLessThanOrEqual((REALTIME_MIN_REFRESH_INTERVAL_MS / WATCH_TICK_MS) + 2);
+    expect(wait.mock.calls.every((call) => call[0] === WATCH_TICK_MS)).toBe(true);
+    expect(output).toContain("Authoritative refresh unavailable — existing persistent state remains available.");
+    expect(output.join("\n")).not.toContain("synthetic private history error");
+    expect(close).toHaveBeenCalledOnce();
   });
 
   it("accepts an explicit foreground manual refresh without bypassing the shared limit", async () => {
@@ -163,13 +211,45 @@ function neverEnding(): AsyncIterable<EphemeralRealtimeEvent> {
 
 function utterance(): EphemeralRealtimeEvent {
   return {
-    kind: "utterance", id: "event_synthetic", provider: "bee", providerEventId: null, sessionId: null,
-    conversationId: "conversation_synthetic", utteranceId: "utterance_synthetic", observedAt: NOW,
+    kind: "utterance", id: "event_synthetic", provider: "bee", providerEventId: null,
+    sessionId: "uuid-synthetic-001", conversationId: null, utteranceId: "utterance_synthetic", observedAt: NOW,
     spokenAt: null, text: "I will send the synthetic pricing deck.", final: true,
+  };
+}
+
+function processedConversation(): EphemeralRealtimeEvent {
+  return {
+    kind: "conversation_state", id: "state_processed", provider: "bee", providerEventId: null,
+    sessionId: "uuid-synthetic-001", conversationId: "6531525", observedAt: NOW, state: "processed",
   };
 }
 
 function clockAfterInitialSync(): () => string {
   let calls = 0;
   return () => calls++ === 0 ? NOW : "2026-09-12T08:02:00.000Z";
+}
+
+function advancingTime() {
+  const initial = Date.parse(NOW);
+  let current = initial;
+  return {
+    now: () => new Date(current).toISOString(),
+    wait: async (milliseconds: number, _signal: AbortSignal) => { current += milliseconds; },
+    elapsed: () => current - initial,
+  };
+}
+
+function timeAfterInitialSync() {
+  let first = true;
+  let current = Date.parse("2026-09-12T08:02:00.000Z");
+  return {
+    now: () => {
+      if (first) {
+        first = false;
+        return NOW;
+      }
+      return new Date(current).toISOString();
+    },
+    wait: async (milliseconds: number, _signal: AbortSignal) => { current += milliseconds; },
+  };
 }

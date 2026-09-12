@@ -10,6 +10,8 @@ import {
 
 const NOW = "2026-09-12T08:00:00.000Z";
 const LATER = "2026-09-12T08:02:00.000Z";
+const REALTIME_UUID = "uuid-synthetic-001";
+const HISTORICAL_ID = "6531525";
 
 describe("authoritative realtime handoff", () => {
   it("creates no database, event, user-state, or notification rows from a provisional signal", () => {
@@ -28,11 +30,12 @@ describe("authoritative realtime handoff", () => {
     const loop = syntheticLoop("alpha");
     const refresh = vi.fn(async (now: string) => ({
       reconcile: store.reconcile({ loops: [loop], observedAt: now, complete: true }),
-      detectedConversationIds: new Set(["conversation_synthetic"]),
+      detectedConversationIds: new Set([HISTORICAL_ID]),
       timeZone: "UTC",
     }));
     const coordinator = coordinatorWith(refresh);
     coordinator.observe(utterance(), "UTC");
+    coordinator.observe(conversationState("processing"), "UTC");
     const first = await coordinator.refresh("conversation_processed", NOW);
     const second = await coordinator.refresh("realtime_gap", LATER);
 
@@ -60,7 +63,7 @@ describe("authoritative realtime handoff", () => {
     const store = new LoopStore({ path: ":memory:" });
     const refresh = vi.fn(async (now: string) => ({
       reconcile: store.reconcile({ loops: [syntheticLoop("gap")], observedAt: now, complete: true }),
-      detectedConversationIds: new Set(["conversation_synthetic"]),
+      detectedConversationIds: new Set([HISTORICAL_ID]),
       timeZone: "UTC",
     }));
     const coordinator = coordinatorWith(refresh);
@@ -95,7 +98,7 @@ describe("authoritative realtime handoff", () => {
     const expanded = syntheticLoop("preference", "c");
     const coordinator = coordinatorWith(async (now) => ({
       reconcile: store.reconcile({ loops: [expanded], observedAt: now, complete: true }),
-      detectedConversationIds: new Set(["conversation_synthetic"]),
+      detectedConversationIds: new Set([HISTORICAL_ID]),
       timeZone: "UTC",
     }));
     coordinator.observe(utterance(), "UTC");
@@ -131,6 +134,86 @@ describe("authoritative realtime handoff", () => {
     expect((await coordinator.refresh("conversation_processed", "2026-09-12T08:01:00.000Z")).attempted).toBe(true);
     expect(refresh).toHaveBeenCalledOnce();
   });
+
+  it("keeps a UUID-only provisional signal until Bee explicitly bridges it to the historical ID", async () => {
+    const coordinator = coordinatorWith(async () => ({
+      ...emptySync(), detectedConversationIds: new Set([HISTORICAL_ID]),
+    }));
+    coordinator.observe(utterance(), "UTC");
+    await coordinator.refresh("conversation_processed", NOW);
+    expect(coordinator.signals()).toHaveLength(1);
+
+    coordinator.observe(conversationState("processed"), "UTC");
+    await coordinator.refresh("conversation_processed", LATER);
+    expect(coordinator.signals()).toEqual([]);
+  });
+
+  it("expires an unbridged UUID-only signal by TTL instead of matching numeric history by guesswork", async () => {
+    const awareness = new ProvisionalAwareness({ ttlMs: 1_000 });
+    const coordinator = coordinatorWith(async () => ({
+      ...emptySync(), detectedConversationIds: new Set([HISTORICAL_ID]),
+    }), awareness);
+    coordinator.observe(utterance(), "UTC");
+    await coordinator.refresh("conversation_processed", NOW);
+    expect(coordinator.signals()).toHaveLength(1);
+    expect(coordinator.expire("2026-09-12T08:00:01.000Z")).toBe(1);
+  });
+
+  it("coalesces all cooldown triggers into exactly one deferred refresh at the permitted time", async () => {
+    const refresh = vi.fn(async () => emptySync());
+    const coordinator = new RealtimeHandoffCoordinator(new ProvisionalAwareness(), refresh, NOW);
+    expect((await coordinator.refresh("conversation_processed", "2026-09-12T08:00:10.000Z")).attempted).toBe(false);
+    expect((await coordinator.refresh("realtime_gap", "2026-09-12T08:00:20.000Z")).attempted).toBe(false);
+    expect((await coordinator.refresh("manual", "2026-09-12T08:00:30.000Z")).attempted).toBe(false);
+    expect(coordinator.hasPendingRefresh()).toBe(true);
+    expect((await coordinator.flushPending("2026-09-12T08:00:59.999Z")).attempted).toBe(false);
+    const flushed = await coordinator.flushPending("2026-09-12T08:01:00.000Z");
+    expect(flushed).toMatchObject({ attempted: true, trigger: "coalesced_pending" });
+    expect(refresh).toHaveBeenCalledOnce();
+    expect(coordinator.hasPendingRefresh()).toBe(false);
+  });
+
+  it("coalesces idle and processed hints after initial sync into one refresh at the permitted instant", async () => {
+    const refresh = vi.fn(async () => emptySync());
+    const coordinator = new RealtimeHandoffCoordinator(new ProvisionalAwareness(), refresh, NOW);
+    coordinator.observe(utterance("activity", "utterance_activity", "2026-09-12T08:00:01.000Z"), "UTC");
+
+    expect(coordinator.idleRefreshDue("2026-09-12T08:00:31.000Z")).toBe(false);
+    expect(coordinator.hasPendingRefresh()).toBe(true);
+    expect((await coordinator.refresh("conversation_processed", "2026-09-12T08:00:40.000Z")).attempted).toBe(false);
+    expect((await coordinator.flushPending("2026-09-12T08:00:59.999Z")).attempted).toBe(false);
+    expect((await coordinator.flushPending("2026-09-12T08:01:00.000Z")).attempted).toBe(true);
+    expect(refresh).toHaveBeenCalledOnce();
+  });
+
+  it("defers activity that arrives during an in-flight refresh and performs one later repair", async () => {
+    let finish!: (value: ReturnType<typeof emptySync>) => void;
+    const refresh = vi.fn(() => new Promise<ReturnType<typeof emptySync>>((resolve) => { finish = resolve; }));
+    const coordinator = coordinatorWith(refresh);
+    const first = coordinator.refresh("idle", NOW);
+    expect((await coordinator.refresh("conversation_processed", NOW)).attempted).toBe(false);
+    finish(emptySync());
+    expect((await first).attempted).toBe(true);
+    expect(coordinator.hasPendingRefresh()).toBe(true);
+
+    const second = coordinator.flushPending("2026-09-12T08:01:00.000Z");
+    finish(emptySync());
+    expect((await second).attempted).toBe(true);
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("retains one bounded retry after a failed refresh without exposing the error", async () => {
+    const refresh = vi.fn()
+      .mockRejectedValueOnce(new Error("synthetic private history error"))
+      .mockResolvedValueOnce(emptySync());
+    const coordinator = coordinatorWith(refresh);
+    await expect(coordinator.refresh("realtime_gap", NOW)).rejects.toThrow();
+    expect(coordinator.hasPendingRefresh()).toBe(true);
+    expect(coordinator.pendingRefreshDelayMs("2026-09-12T08:00:30.000Z")).toBe(30_000);
+    expect((await coordinator.flushPending("2026-09-12T08:01:00.000Z")).attempted).toBe(true);
+    expect(refresh).toHaveBeenCalledTimes(2);
+    expect(coordinator.hasPendingRefresh()).toBe(false);
+  });
 });
 
 function coordinatorWith(
@@ -146,9 +229,17 @@ function emptySync(): { reconcile: ReconcileResult; detectedConversationIds: Set
 
 function utterance(id = "event_synthetic", utteranceId = "utterance_synthetic", observedAt = NOW): EphemeralRealtimeUtterance {
   return {
-    kind: "utterance", id, provider: "bee", providerEventId: id, sessionId: null,
-    conversationId: "conversation_synthetic", utteranceId, observedAt, spokenAt: null,
+    kind: "utterance", id, provider: "bee", providerEventId: null, sessionId: REALTIME_UUID,
+    conversationId: null, utteranceId, observedAt, spokenAt: null,
     text: "I will send the synthetic pricing deck.", final: true,
+  };
+}
+
+function conversationState(state: string) {
+  return {
+    kind: "conversation_state" as const, id: `state_${state}`, provider: "bee" as const,
+    providerEventId: null, sessionId: REALTIME_UUID, conversationId: HISTORICAL_ID,
+    observedAt: NOW, state,
   };
 }
 

@@ -77,6 +77,23 @@ describe("ProvisionalAwareness", () => {
     expect(awareness.retireConversations(new Set(["conversation_other"]))).toBe(0);
     expect(awareness.retireConversations(new Set(["conversation_beta"]))).toBe(1);
   });
+
+  it("resolves a realtime session to an authoritative ID only from an explicit bridge", () => {
+    const awareness = new ProvisionalAwareness();
+    awareness.ingest(utterance("I will send synthetic alpha.", {
+      conversationId: null, sessionId: "uuid-synthetic-001",
+    }), "UTC");
+    expect(awareness.retireConversations(new Set(["6531525"]))).toBe(0);
+    expect(awareness.resolveConversationIdentity("unrelated-uuid", "6531525")).toBe(0);
+    expect(awareness.resolveConversationIdentity("uuid-synthetic-001", "6531525")).toBe(1);
+    expect(awareness.list()[0]?.conversationId).toBe("6531525");
+    const corrected = awareness.ingest(utterance("I will send corrected synthetic alpha.", {
+      id: "event_corrected", conversationId: "6531525", sessionId: "uuid-synthetic-001",
+    }), "UTC");
+    expect(corrected.emitted).toEqual([]);
+    expect(corrected.active).toHaveLength(1);
+    expect(awareness.retireConversations(new Set(["6531525"]))).toBe(1);
+  });
 });
 
 function utterance(text: string, overrides: Partial<EphemeralRealtimeUtterance> = {}): EphemeralRealtimeUtterance {

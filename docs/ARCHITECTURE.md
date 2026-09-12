@@ -52,7 +52,9 @@ Phase 4 adds a separate foreground-only acceleration path:
 ```text
 @beeai/cli 0.7.3 bee.sse.streamJson(...)
     ↓
-BeeAdapterClient.subscribeRealtime (Bee shapes end here)
+raw data JSON: { utterance, conversation_uuid } | { conversation }
+    ↓
+BeeAdapterClient.subscribeRealtime (Bee shapes and UUID↔numeric-ID bridge end here)
     ↓
 EphemeralRealtimeEvent (provider-independent, bounded memory)
     ↓
@@ -115,8 +117,14 @@ something might need to change independently:
   only ever sees `@cuenexa-loop/contracts` types.
 
   Phase 4 wraps only the public `sse.streamJson({ types, signal })` API.
-  Realtime event IDs/fingerprints are bounded and memory-only; malformed
-  supported events produce fixed content-free warnings.
+  Version 0.7.3 exposes parsed `data:` JSON, not SSE `event:`/`id:` metadata,
+  so the adapter discriminates documented payload structures and requests only
+  `new-utterance`, `new-conversation`, and `update-conversation`. Realtime
+  fingerprints are bounded and memory-only; malformed supported events produce
+  fixed content-free warnings. A separate 256-entry adapter-process-local bridge
+  accepts only provider payloads containing both the realtime UUID and
+  processed-history numeric ID. It never correlates identity from content and
+  survives bounded reconnects but is never persisted.
 
 - **`@cuenexa-loop/loop-engine`** owns provider-independent Phase 1
   intelligence. Phase 1A's `detectLoopItems()` turns `LoopConversation[]`/
@@ -172,6 +180,10 @@ something might need to change independently:
   interval, and bounded 1/2/5-second reconnect schedule. Merely displaying
   authoritative notification eligibility never records a delivery. A user may
   press `r` and Enter for an explicit refresh subject to the same rate limit.
+  A single pending bit coalesces processed, idle, manual, and gap requests that
+  arrive during cooldown or an in-flight refresh; the runtime performs one
+  deferred attempt when permitted. A failed attempt retains one coalesced retry
+  request while the bounded foreground runtime remains active.
 
 ## Why normalization never throws
 

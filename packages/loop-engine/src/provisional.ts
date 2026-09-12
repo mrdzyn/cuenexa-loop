@@ -90,6 +90,20 @@ export class ProvisionalAwareness {
     return removed;
   }
 
+  /** Applies only an explicit provider-observed session/authoritative-ID pair. */
+  resolveConversationIdentity(sessionId: string, conversationId: string): number {
+    let updated = 0;
+    for (const signals of this.groups.values()) {
+      for (const [type, signal] of signals) {
+        if (signal.sessionId === sessionId && signal.conversationId === null) {
+          signals.set(type, { ...signal, conversationId });
+          updated += 1;
+        }
+      }
+    }
+    return updated;
+  }
+
   private rememberEvent(id: string): void {
     this.seenEventIds.add(id);
     this.eventOrder.push(id);
@@ -131,7 +145,8 @@ function detectSignals(
 }
 
 function sourceKey(event: EphemeralRealtimeUtterance): string {
-  return [event.provider, event.conversationId ?? event.sessionId ?? "unknown", event.utteranceId ?? event.id].join(":");
+  // Realtime UUID is stable across the explicit later numeric-ID upgrade.
+  return [event.provider, event.sessionId ?? event.conversationId ?? "unknown", event.utteranceId ?? event.id].join(":");
 }
 
 function stableSignalId(key: string, type: ProvisionalSignalType): string {
