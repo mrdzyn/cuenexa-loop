@@ -133,12 +133,48 @@ describe("scoreCorrelationPair", () => {
     expect(scoreCorrelationPair(action, weakDecision).rejectionReasonCodes).toContain("decision_requires_strong_anchor");
   });
 
-  it("accepts decision-to-action only with strong renewal-proposal anchors", () => {
+  it("accepts a chronologically forward decision-to-action pair with strong renewal-proposal anchors", () => {
     const decision = makeItem("a", "conv-a", "We approved the renewal proposal.", { type: "decision" });
     const action = makeItem("b", "conv-b", "I'll send the renewal proposal.");
     const result = scoreCorrelationPair(decision, action, chronology);
     expect(result.accepted).toBe(true);
     expect(result.reasonCodes).toContain("decision_to_action");
+  });
+
+  it("rejects a reversed or missing decision-to-action chronology regardless of argument order", () => {
+    const action = makeItem("a", "conv-a", "I'll send the renewal proposal.");
+    const decision = makeItem("b", "conv-b", "We approved the renewal proposal.", { type: "decision" });
+    const reversed = scoreCorrelationPair(action, decision, chronology);
+    const missing = scoreCorrelationPair(decision, action);
+
+    expect(reversed.eligible).toBe(false);
+    expect(reversed.rejectionReasonCodes).toContain("decision_action_chronology_required");
+    expect(scoreCorrelationPair(decision, action, chronology)).toEqual(reversed);
+    expect(missing.eligible).toBe(false);
+    expect(missing.rejectionReasonCodes).toContain("decision_action_chronology_required");
+  });
+
+  it("uses source occurrence rather than createdAt for decision-to-action direction", () => {
+    const decision = makeItem("a", "conv-a", "We approved the renewal proposal.", {
+      type: "decision",
+      createdAt: "2099-01-01T00:00:00.000Z",
+    });
+    const action = makeItem("b", "conv-b", "I'll send the renewal proposal.", {
+      createdAt: "1999-01-01T00:00:00.000Z",
+    });
+    const result = scoreCorrelationPair(decision, action, chronology);
+
+    expect(result.accepted).toBe(true);
+    expect(result.reasonCodes).toContain("decision_to_action");
+  });
+
+  it("does not require chronology for otherwise strong action-to-action pairs", () => {
+    const result = scoreCorrelationPair(
+      makeItem("a", "conv-a", "I'll send the pricing deck."),
+      makeItem("b", "conv-b", "Please review the pricing deck."),
+    );
+    expect(result.accepted).toBe(true);
+    expect(result.supportingSignals.chronologicalContinuation).toBe(false);
   });
 
   it("never turns a below-threshold score into a valid emitted link", () => {

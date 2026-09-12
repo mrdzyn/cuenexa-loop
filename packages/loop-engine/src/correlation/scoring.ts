@@ -1,7 +1,7 @@
 import type { LoopConversation } from "@cuenexa-loop/contracts";
 import { MINIMUM_LOOP_CORRELATION_CONFIDENCE } from "../loop-types.js";
 import { normalizeForComparison } from "../text-utils.js";
-import type { LoopItem } from "../types.js";
+import type { LoopItem, LoopItemType } from "../types.js";
 import { evaluatePairEligibility } from "./eligibility.js";
 import { deriveItemOccurrence } from "./occurrence.js";
 import { CorrelationScoreResultSchema } from "./types.js";
@@ -49,6 +49,17 @@ export function scoreCorrelationPair(
     });
   }
 
+  if (!hasRequiredDecisionActionChronology(a, b, conversations)) {
+    return CorrelationScoreResultSchema.parse({
+      ...eligibility,
+      eligible: false,
+      accepted: false,
+      confidence: 0,
+      rejectionReasonCodes: [...new Set([...eligibility.rejectionReasonCodes, "decision_action_chronology_required"])].sort(),
+      supportingSignals,
+    });
+  }
+
   let confidence = 0;
   if (eligibility.hasSharedSpecificAnchorPhrase) {
     confidence += CORRELATION_SCORE_WEIGHTS.sharedSpecificAnchorPhrase;
@@ -82,6 +93,38 @@ export function scoreCorrelationPair(
     reasonCodes: [...new Set(reasonCodes)].sort(),
     supportingSignals,
   });
+}
+
+/** Decision-to-action is directional; action-to-action remains symmetric. */
+function hasRequiredDecisionActionChronology(
+  a: LoopItem,
+  b: LoopItem,
+  conversations: readonly LoopConversation[],
+): boolean {
+  const pair = decisionAndAction(a, b);
+  if (!pair) {
+    return true;
+  }
+  const decisionTime = deriveItemOccurrence(pair.decision, conversations).occurredAt;
+  const actionTime = deriveItemOccurrence(pair.action, conversations).occurredAt;
+  if (!decisionTime || !actionTime) {
+    return false;
+  }
+  return Date.parse(decisionTime) < Date.parse(actionTime);
+}
+
+function decisionAndAction(a: LoopItem, b: LoopItem): { decision: LoopItem; action: LoopItem } | null {
+  if (a.type === "decision" && isActionType(b.type)) {
+    return { decision: a, action: b };
+  }
+  if (b.type === "decision" && isActionType(a.type)) {
+    return { decision: b, action: a };
+  }
+  return null;
+}
+
+function isActionType(type: LoopItemType): boolean {
+  return type === "commitment" || type === "follow_up" || type === "delegation";
 }
 
 function hasMatchingOwner(a: LoopItem, b: LoopItem): boolean {

@@ -13,6 +13,7 @@ export const PairEligibilityRejectionReasonCodeSchema = z.enum([
   "no_shared_specific_anchors",
   "generic_language_only",
   "ineligible_item_state",
+  "decision_action_chronology_required",
 ]);
 export type PairEligibilityRejectionReasonCode = z.infer<typeof PairEligibilityRejectionReasonCodeSchema>;
 

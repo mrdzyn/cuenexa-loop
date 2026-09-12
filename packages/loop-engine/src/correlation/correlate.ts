@@ -13,6 +13,7 @@ import type {
   LoopCorrelationWarning,
 } from "../loop-types.js";
 import type { LoopItem } from "../types.js";
+import { selectCompleteLinkClusters } from "./clustering.js";
 import { deriveLoopLifecycle } from "./lifecycle.js";
 import { deriveItemOccurrence } from "./occurrence.js";
 import { scoreCorrelationPair } from "./scoring.js";
@@ -29,7 +30,7 @@ interface AcceptedEdge {
   readonly first: number;
   readonly second: number;
   readonly score: CorrelationScoreResult;
-  readonly stableKey: string;
+  readonly confidence: number;
 }
 
 /** Pure, deterministic Phase 1B snapshot correlation. No state survives this call. */
@@ -55,33 +56,14 @@ export function correlateLoopItems(rawInput: LoopCorrelationInput): LoopCorrelat
           first,
           second,
           score,
-          stableKey: `${firstCandidate.identity}:${secondCandidate.identity}`,
+          confidence: score.confidence,
         });
       }
     }
   }
 
-  acceptedEdges.sort((a, b) => b.score.confidence - a.score.confidence || a.stableKey.localeCompare(b.stableKey));
   const edgeMap = new Map(acceptedEdges.map((edge) => [pairKey(edge.first, edge.second), edge]));
-  const clusters = candidates.map((_candidate, index) => [index]);
-
-  for (const edge of acceptedEdges) {
-    const firstClusterIndex = clusters.findIndex((cluster) => cluster.includes(edge.first));
-    const secondClusterIndex = clusters.findIndex((cluster) => cluster.includes(edge.second));
-    if (firstClusterIndex < 0 || secondClusterIndex < 0 || firstClusterIndex === secondClusterIndex) {
-      continue;
-    }
-    const firstCluster = clusters[firstClusterIndex];
-    const secondCluster = clusters[secondClusterIndex];
-    if (!firstCluster || !secondCluster || !allCrossPairsAccepted(firstCluster, secondCluster, edgeMap)) {
-      continue;
-    }
-    const merged = [...firstCluster, ...secondCluster].sort((a, b) => a - b);
-    const high = Math.max(firstClusterIndex, secondClusterIndex);
-    const low = Math.min(firstClusterIndex, secondClusterIndex);
-    clusters.splice(high, 1);
-    clusters.splice(low, 1, merged);
-  }
+  const clusters = selectCompleteLinkClusters(candidates.map((candidate) => candidate.identity), acceptedEdges);
 
   const warnings: LoopCorrelationWarning[] = [];
   const loops = clusters
@@ -112,14 +94,6 @@ export function correlateLoopItems(rawInput: LoopCorrelationInput): LoopCorrelat
     warnings,
     snapshot,
   });
-}
-
-function allCrossPairsAccepted(
-  firstCluster: readonly number[],
-  secondCluster: readonly number[],
-  edgeMap: ReadonlyMap<string, AcceptedEdge>,
-): boolean {
-  return firstCluster.every((first) => secondCluster.every((second) => edgeMap.has(pairKey(first, second))));
 }
 
 function buildLoop(

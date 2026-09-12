@@ -57,8 +57,11 @@ conversation contexts, come from the same conversation, use different
 providers, contain a provisional/dismissed member, or use incompatible
 item families. Action types (`commitment`, `follow_up`, `delegation`) may
 pair. Decision-to-action pairs require both a shared specific phrase and
-at least two shared specific tokens. Open questions remain conservative
-and do not seed Phase 1B Loops.
+at least two shared specific tokens **and** source chronology showing the
+decision occurred strictly before the action. Missing, equal, or reversed
+decision/action source chronology is rejected as
+`decision_action_chronology_required`; `createdAt` is never used. Open
+questions remain conservative and do not seed Phase 1B Loops.
 
 Rejections use fixed reason codes such as `same_member`,
 `same_conversation`, `different_provider`, `ineligible_item_state`,
@@ -109,13 +112,16 @@ so input order cannot alter the timeline.
 
 ## Complete-link grouping
 
-Accepted pair edges sort by confidence descending and then stable member
-identity. Candidate clusters merge only when **every** cross-cluster pair
-is accepted at or above 0.90. Therefore A-B and B-C cannot pull A-C into a
-three-member Loop when A-C fails. Competing equal-strength groupings use
-stable identity ordering. This is intentionally more conservative than
-connected components and may emit a smaller Loop rather than risk a false
-transitive merge.
+Candidate clusters merge only when **every** cross-cluster pair is accepted
+at or above 0.90. At each iteration the correlator enumerates valid merges,
+calculates each prospective cluster's weakest required pair confidence, and
+selects the strongest such weakest link; stable member/cluster identity
+breaks exact ties. It then recomputes candidates. Therefore A-B and B-C
+cannot pull A-C into a three-member Loop when A-C fails, and overlapping
+complete cliques choose the stronger weakest-link group rather than the
+first greedy edge. This is intentionally more conservative than connected
+components and may emit a smaller Loop rather than risk a false transitive
+merge.
 
 A Loop's `correlationConfidence` is the minimum accepted pair score across
 its complete-link cluster—the weakest required relationship, never the

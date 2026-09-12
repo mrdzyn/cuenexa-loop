@@ -91,6 +91,31 @@ describe("correlateLoopItems complete-link grouping", () => {
     expect(shuffled.loops).toEqual(forward.loops);
   });
 
+  it("chooses the stronger competing complete-link group independently of input order", () => {
+    const members = [
+      item("a", "conv-a", "I'll send the vendor contract and quarterly forecast."),
+      item("b", "conv-b", "Please review the vendor contract and quarterly forecast."),
+      item("c", "conv-c", "I'll finalize the vendor contract."),
+      item("d", "conv-d", "I'll finalize the quarterly forecast."),
+    ];
+    const conversations = [
+      conversation("conv-a", "2026-02-01T10:00:00.000Z"),
+      conversation("conv-b", "2026-02-02T10:00:00.000Z"),
+      conversation("conv-c", "2026-02-03T10:00:00.000Z"),
+      conversation("conv-d", "2026-02-04T10:00:00.000Z"),
+    ];
+    const forward = correlate(members, conversations);
+    const shuffled = correlate([members[3]!, members[1]!, members[2]!, members[0]!], [...conversations].reverse());
+    const expectedMemberIds = ["a", "b", "d"];
+
+    expect(forward.loops).toHaveLength(1);
+    expect(forward.loops[0]?.members.map((member) => member.itemId).sort()).toEqual(expectedMemberIds);
+    expect(forward.loops[0]?.correlationConfidence).toBe(
+      Math.min(...(forward.loops[0]?.correlationLinks ?? []).map((link) => link.confidence)),
+    );
+    expect(shuffled.loops).toEqual(forward.loops);
+  });
+
   it("uses the weakest complete-link score as Loop confidence", () => {
     const sharedDue = "2026-02-20T00:00:00.000Z";
     const members = [
