@@ -83,6 +83,13 @@ permissions. It never builds SQL from Bee content. An unreadable or newer
 database version produces a fixed action error and is never deleted
 automatically. `loops:reset -- --yes` is the explicit local-only erase path.
 
+Phase 3 continues the same boundary. User action arguments use an allowlist,
+bounded thread IDs, strict absolute timestamps, and bounded duration syntax;
+they are always prepared-statement data and never shell commands or SQL
+fragments. User preferences and notification deliveries live in separate
+foreign-keyed tables. The notification ledger contains structural IDs, types,
+and trigger keys only, with a unique constraint enforcing exact deduplication.
+
 ## No cloud dependency
 
 Phase 1 has no AWS, Amazon Bedrock, model-provider, or third-party API

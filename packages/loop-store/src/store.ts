@@ -185,6 +185,13 @@ export class LoopStore {
     }));
   }
 
+  hasNotificationDelivery(threadId: string, type: LoopNotificationType, triggerKey: string): boolean {
+    return Boolean(this.database.prepare(`
+      SELECT 1 AS found FROM loop_notification_deliveries
+      WHERE thread_id = ? AND notification_type = ? AND trigger_key = ?
+    `).get(threadId, type, triggerKey));
+  }
+
   recordNotificationDeliveries(inputs: readonly NotificationDeliveryInput[], deliveredAt: string): number {
     requireIsoInstant(deliveredAt, "notification delivery timestamp");
     let recorded = 0;

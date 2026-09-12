@@ -23,7 +23,11 @@ describe("schema v1 to v2 migration", () => {
     createVersionOneDatabase(path, original.id, [createStableMemberIdentity(a), createStableMemberIdentity(b)]);
 
     const migrated = new LoopStore({ path });
-    expect(migrated.listThreads()[0]).toMatchObject({ id: "thread_synthetic_v1", state: "resolved" });
+    expect(migrated.listThreads()[0]).toMatchObject({
+      id: "thread_synthetic_v1", state: "resolved",
+      memberIdentities: [createStableMemberIdentity(a), createStableMemberIdentity(b)].sort(),
+      snapshotLoopIds: [original.id],
+    });
     expect(migrated.listEvents()[0]).toMatchObject({ id: "event_synthetic_v1", type: "resolved" });
     expect(migrated.pinThread("thread_synthetic_v1", TEST_NOW).state.pinned).toBe(true);
     expect(migrated.recordNotificationDeliveries([{
@@ -47,6 +51,25 @@ describe("schema v1 to v2 migration", () => {
     const raw = new DatabaseSync(path);
     expect((raw.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(2);
     raw.close();
+  });
+
+  it("rolls back a failed migration and preserves the version-1 database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cuenexa-loop-v1-failure-"));
+    directories.push(directory);
+    const path = join(directory, "state.sqlite");
+    const a = syntheticItem("failure-a"); const b = syntheticItem("failure-b");
+    const original = syntheticLoop([a, b]);
+    createVersionOneDatabase(path, original.id, [createStableMemberIdentity(a), createStableMemberIdentity(b)]);
+    const incompatible = new DatabaseSync(path);
+    incompatible.exec("CREATE TABLE loop_notification_deliveries (notification_id TEXT PRIMARY KEY);");
+    incompatible.close();
+
+    expect(() => new LoopStore({ path })).toThrow("Preserve the database");
+    const preserved = new DatabaseSync(path);
+    expect((preserved.prepare("PRAGMA user_version").get() as { user_version: number }).user_version).toBe(1);
+    expect((preserved.prepare("SELECT COUNT(*) AS count FROM loop_threads").get() as { count: number }).count).toBe(1);
+    expect(() => preserved.prepare("SELECT * FROM loop_thread_user_state").all()).toThrow();
+    preserved.close();
   });
 });
 

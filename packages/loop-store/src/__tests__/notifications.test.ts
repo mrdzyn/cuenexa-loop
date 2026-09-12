@@ -35,9 +35,11 @@ describe("planNotifications", () => {
   it("respects acknowledgement, snooze, dismissal, pin, and resolved lifecycle", () => {
     const acknowledged = thread("acknowledged"); const sleeping = thread("sleeping", "2026-07-01T10:00:00.000Z");
     const dismissed = thread("dismissed"); const pinned = thread("pinned");
-    const urgent = thread("urgent", "2026-07-01T13:00:00.000Z"); const resolved = thread("resolved", "2026-07-01T13:00:00.000Z", "resolved");
+    const urgent = thread("urgent", "2026-07-01T13:00:00.000Z");
+    const overdueDismissed = thread("overdue-dismissed", "2026-07-01T10:00:00.000Z");
+    const resolved = thread("resolved", "2026-07-01T13:00:00.000Z", "resolved");
     const plan = planNotifications(
-      [acknowledged, sleeping, dismissed, pinned, urgent, resolved],
+      [acknowledged, sleeping, dismissed, pinned, urgent, overdueDismissed, resolved],
       [event("acknowledged", "new_activity"), event("dismissed", "new_activity"), event("pinned", "new_activity")],
       [
         state("acknowledged", { acknowledgedAt: NOW }),
@@ -45,10 +47,11 @@ describe("planNotifications", () => {
         state("dismissed", { dismissedAt: NOW }),
         state("pinned", { dismissedAt: NOW, pinned: true }),
         state("urgent", { dismissedAt: NOW }),
+        state("overdue-dismissed", { dismissedAt: NOW }),
       ], [], NOW,
     );
     expect(plan.candidates.map((candidate) => `${candidate.thread.id}:${candidate.type}`)).toEqual([
-      "urgent:due_within_24h", "pinned:new_activity",
+      "overdue-dismissed:overdue", "urgent:due_within_24h", "pinned:new_activity",
     ]);
   });
 

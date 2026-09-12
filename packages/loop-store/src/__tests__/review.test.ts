@@ -58,21 +58,23 @@ describe("buildReviewModel", () => {
 
   it("dismissal hides unchanged non-urgent activity, while newer activity, urgent due, and pin bypass it", () => {
     const hidden = thread("hidden"); const changed = thread("changed");
-    const urgent = thread("urgent", "open", "2026-06-10T13:00:00.000Z"); const pinned = thread("pinned");
+    const urgent = thread("urgent", "open", "2026-06-10T13:00:00.000Z");
+    const overdue = thread("overdue", "open", "2026-06-10T11:00:00.000Z");
+    const pinned = thread("pinned");
     const dismissedAt = "2026-06-10T11:00:00.000Z";
     const model = buildReviewModel(
-      [hidden, changed, urgent, pinned],
+      [hidden, changed, urgent, overdue, pinned],
       [
         event("hidden", "new_activity", "2026-06-10T10:00:00.000Z"),
         event("changed", "new_activity", "2026-06-10T11:30:00.000Z"),
       ],
       [
         state("hidden", { dismissedAt }), state("changed", { dismissedAt }),
-        state("urgent", { dismissedAt }), state("pinned", { dismissedAt, pinned: true }),
+        state("urgent", { dismissedAt }), state("overdue", { dismissedAt }), state("pinned", { dismissedAt, pinned: true }),
       ], NOW,
     );
     expect(model.needsAttention.map((item) => item.thread.id)).toEqual(["pinned", "changed"]);
-    expect(model.dueNow.map((item) => item.thread.id)).toEqual(["urgent"]);
+    expect(model.dueNow.map((item) => item.thread.id)).toEqual(["overdue", "urgent"]);
     expect(JSON.stringify(model)).not.toContain("hidden");
   });
 

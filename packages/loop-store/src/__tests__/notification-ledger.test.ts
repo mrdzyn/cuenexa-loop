@@ -13,6 +13,7 @@ describe("notification delivery ledger", () => {
     const threadId = seedThread(store);
     const input = { id: "notification_synthetic", threadId, type: "new_activity" as const, triggerKey: "event:event_synthetic" };
     expect(store.recordNotificationDeliveries([input], TEST_NOW)).toBe(1);
+    expect(store.hasNotificationDelivery(threadId, input.type, input.triggerKey)).toBe(true);
     expect(store.recordNotificationDeliveries([input], "2026-01-01T13:00:00.000Z")).toBe(0);
     store.close();
 
