@@ -10,6 +10,9 @@ import type {
   LoopChangeEventType,
   LoopThread,
   LoopThreadUserState,
+  LoopNotificationType,
+  NotificationDelivery,
+  NotificationDeliveryInput,
   ReconcileInput,
   ReconcileResult,
   UserStateMutationResult,
@@ -48,6 +51,14 @@ interface UserStateRow {
   pinned: number;
   dismissed_at: string | null;
   updated_at: string;
+}
+
+interface NotificationDeliveryRow {
+  notification_id: string;
+  thread_id: string;
+  notification_type: LoopNotificationType;
+  trigger_key: string;
+  delivered_at: string;
 }
 
 export interface LoopStoreOptions {
@@ -154,6 +165,41 @@ export class LoopStore {
       .prepare("SELECT thread_id, acknowledged_at, snoozed_until, pinned, dismissed_at, updated_at FROM loop_thread_user_state ORDER BY thread_id")
       .all() as unknown as UserStateRow[];
     return rows.map(userStateFromRow);
+  }
+
+  listNotificationDeliveries(limit = 500): NotificationDelivery[] {
+    const boundedLimit = Math.max(1, Math.min(5_000, Math.floor(limit)));
+    const rows = this.database.prepare(`
+      SELECT notification_id, thread_id, notification_type, trigger_key, delivered_at
+      FROM loop_notification_deliveries
+      ORDER BY delivered_at DESC, notification_id DESC
+      LIMIT ?
+    `).all(boundedLimit) as unknown as NotificationDeliveryRow[];
+    return rows.map((row) => ({
+      id: row.notification_id,
+      threadId: row.thread_id,
+      type: row.notification_type,
+      triggerKey: row.trigger_key,
+      deliveredAt: row.delivered_at,
+    }));
+  }
+
+  recordNotificationDeliveries(inputs: readonly NotificationDeliveryInput[], deliveredAt: string): number {
+    requireIsoInstant(deliveredAt, "notification delivery timestamp");
+    let recorded = 0;
+    this.transaction(() => {
+      const statement = this.database.prepare(`
+        INSERT OR IGNORE INTO loop_notification_deliveries
+          (notification_id, thread_id, notification_type, trigger_key, delivered_at)
+        VALUES (?, ?, ?, ?, ?)
+      `);
+      for (const input of [...inputs].sort((left, right) => left.id.localeCompare(right.id))) {
+        this.requireThread(input.threadId);
+        const result = statement.run(input.id, input.threadId, input.type, input.triggerKey, deliveredAt) as unknown as { changes: number };
+        recorded += result.changes;
+      }
+    });
+    return recorded;
   }
 
   acknowledgeThread(threadId: string, acknowledgedAt: string): UserStateMutationResult {

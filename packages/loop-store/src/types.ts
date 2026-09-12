@@ -98,3 +98,33 @@ export interface ReviewModel {
   readonly snoozed: readonly ReviewItem[];
   readonly recentlyResolved: readonly ReviewItem[];
 }
+
+export type LoopNotificationType = "overdue" | "due_within_24h" | "reopened" | "new_activity";
+
+export interface NotificationCandidate {
+  readonly id: string;
+  readonly thread: LoopThread;
+  readonly type: LoopNotificationType;
+  /** Content-free structural key: normalized due instant or source event id. */
+  readonly triggerKey: string;
+}
+
+export interface NotificationDelivery {
+  readonly id: string;
+  readonly threadId: string;
+  readonly type: LoopNotificationType;
+  readonly triggerKey: string;
+  readonly deliveredAt: string;
+}
+
+export interface NotificationDeliveryInput {
+  readonly id: string;
+  readonly threadId: string;
+  readonly type: LoopNotificationType;
+  readonly triggerKey: string;
+}
+
+export interface NotificationPlan {
+  readonly generatedAt: string;
+  readonly candidates: readonly NotificationCandidate[];
+}

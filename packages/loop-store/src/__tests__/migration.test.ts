@@ -26,6 +26,9 @@ describe("schema v1 to v2 migration", () => {
     expect(migrated.listThreads()[0]).toMatchObject({ id: "thread_synthetic_v1", state: "resolved" });
     expect(migrated.listEvents()[0]).toMatchObject({ id: "event_synthetic_v1", type: "resolved" });
     expect(migrated.pinThread("thread_synthetic_v1", TEST_NOW).state.pinned).toBe(true);
+    expect(migrated.recordNotificationDeliveries([{
+      id: "notification_migrated", threadId: "thread_synthetic_v1", type: "reopened", triggerKey: "event:event_synthetic_v1",
+    }], TEST_NOW)).toBe(1);
     const reopened = migrated.reconcile({
       loops: [syntheticLoop([a, b, c], "open")],
       observedAt: "2026-01-02T12:00:00.000Z",
@@ -37,6 +40,7 @@ describe("schema v1 to v2 migration", () => {
 
     const reopenedDatabase = new LoopStore({ path });
     expect(reopenedDatabase.getThreadUserState("thread_synthetic_v1").pinned).toBe(true);
+    expect(reopenedDatabase.listNotificationDeliveries()).toHaveLength(1);
     expect(reopenedDatabase.listThreads()).toHaveLength(1);
     reopenedDatabase.close();
 
