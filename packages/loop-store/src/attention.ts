@@ -4,6 +4,7 @@ export const ATTENTION_PRIORITY = {
   overdue_open: 100,
   due_within_24h: 90,
   reopened: 80,
+  pinned: 75,
   new_activity: 70,
   new_member: 65,
   newly_created: 60,

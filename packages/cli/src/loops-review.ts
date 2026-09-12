@@ -2,19 +2,16 @@
 import { buildReviewModel, LoopStore } from "@cuenexa-loop/loop-store";
 import { parseArgs } from "./args.js";
 import { renderLocalStateError } from "./local-error.js";
-import { renderToday } from "./persistent-presenter.js";
+import { renderReview } from "./review-presenter.js";
 
 function main(): void {
   let store: LoopStore | undefined;
   try {
     store = new LoopStore();
-    const review = buildReviewModel(
+    const model = buildReviewModel(
       store.listThreads(), store.listEvents(500), store.listThreadUserStates(), new Date().toISOString(),
     );
-    console.log(renderToday(
-      [...review.dueNow, ...review.needsAttention, ...review.waiting],
-      parseArgs(process.argv.slice(2)).includeContent,
-    ));
+    console.log(renderReview(model, parseArgs(process.argv.slice(2)).includeContent));
   } catch {
     console.error(renderLocalStateError());
     process.exitCode = 1;

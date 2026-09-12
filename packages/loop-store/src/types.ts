@@ -83,4 +83,18 @@ export type AttentionReasonCode =
   | "newly_created"
   | "due_within_3d"
   | "stale_open"
-  | "waiting_too_long";
+  | "waiting_too_long"
+  | "pinned";
+
+export interface ReviewItem extends AttentionItem {
+  readonly userState: LoopThreadUserState;
+}
+
+export interface ReviewModel {
+  readonly generatedAt: string;
+  readonly dueNow: readonly ReviewItem[];
+  readonly needsAttention: readonly ReviewItem[];
+  readonly waiting: readonly ReviewItem[];
+  readonly snoozed: readonly ReviewItem[];
+  readonly recentlyResolved: readonly ReviewItem[];
+}

@@ -149,6 +149,13 @@ export class LoopStore {
     return row ? userStateFromRow(row) : emptyUserState(threadId);
   }
 
+  listThreadUserStates(): LoopThreadUserState[] {
+    const rows = this.database
+      .prepare("SELECT thread_id, acknowledged_at, snoozed_until, pinned, dismissed_at, updated_at FROM loop_thread_user_state ORDER BY thread_id")
+      .all() as unknown as UserStateRow[];
+    return rows.map(userStateFromRow);
+  }
+
   acknowledgeThread(threadId: string, acknowledgedAt: string): UserStateMutationResult {
     requireIsoInstant(acknowledgedAt, "acknowledgement timestamp");
     return this.mutateUserState(threadId, acknowledgedAt, (current) => ({ ...current, acknowledgedAt }));

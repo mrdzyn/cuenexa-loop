@@ -22,6 +22,7 @@
     "loops:correlate": "npm run build && node packages/cli/dist/loops-correlate.js",
     "loops:sync": "npm run build && node packages/cli/dist/loops-sync.js",
     "loops:today": "npm run build && node packages/cli/dist/loops-today.js",
+    "loops:review": "npm run build && node packages/cli/dist/loops-review.js",
     "loops:history": "npm run build && node packages/cli/dist/loops-history.js",
     "loops:reset": "npm run build && node packages/cli/dist/loops-reset.js",
     "loops:demo": "npm run build && node packages/cli/dist/loops-demo.js"
