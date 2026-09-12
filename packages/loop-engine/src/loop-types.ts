@@ -8,6 +8,7 @@ import { LoopItemSchema, LoopSourceSchema } from "./types.js";
  */
 export const LoopIdSchema = z.string().regex(/^loop_[a-f0-9]{24}$/, "Expected a stable Loop id.");
 export type LoopId = z.infer<typeof LoopIdSchema>;
+export const LoopMemberIdentitySchema = z.string().regex(/^member_[a-f0-9]{64}$/, "Expected a stable member identity.");
 
 export const LoopStateSchema = z.enum(["open", "waiting", "resolved"]);
 export type LoopState = z.infer<typeof LoopStateSchema>;
@@ -52,6 +53,8 @@ export type LoopMember = z.infer<typeof LoopMemberSchema>;
 /** A chronology entry references its preserved member and never copies source text. */
 export const LoopTimelineEventSchema = z.object({
   itemId: z.string().min(1),
+  /** Optional for backwards compatibility with Phase 1B.1 callers; emitted by the correlator. */
+  memberIdentity: LoopMemberIdentitySchema.optional(),
   source: LoopSourceSchema,
   occurredAt: z.string().datetime().nullable(),
   timestampSource: LoopTimestampSourceSchema,
@@ -138,7 +141,7 @@ export const LoopSchema = z
   });
 export type Loop = z.infer<typeof LoopSchema>;
 
-/** Future public API input. It remains entirely provider-independent above normalized contracts. */
+/** Provider-independent snapshot input for deterministic, in-memory correlation. */
 export const LoopCorrelationInputSchema = z.object({
   items: z.array(LoopItemSchema),
   conversations: z.array(LoopConversationSchema),
@@ -155,7 +158,7 @@ export const LoopCorrelationWarningSchema = z.object({
 });
 export type LoopCorrelationWarning = z.infer<typeof LoopCorrelationWarningSchema>;
 
-/** Future public API output. Phase 1B.1 defines this shape but no correlator behavior. */
+/** Public result for deterministic, snapshot-local correlation. */
 export const LoopCorrelationResultSchema = z.object({
   loops: z.array(LoopSchema),
   warnings: z.array(LoopCorrelationWarningSchema),
@@ -163,5 +166,5 @@ export const LoopCorrelationResultSchema = z.object({
 });
 export type LoopCorrelationResult = z.infer<typeof LoopCorrelationResultSchema>;
 
-/** Public Phase 1B correlator signature. Behavior is intentionally deferred past Phase 1B.1. */
+/** Public Phase 1B correlator signature. */
 export type CorrelateLoopItems = (input: LoopCorrelationInput) => LoopCorrelationResult;

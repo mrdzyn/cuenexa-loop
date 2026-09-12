@@ -5,6 +5,7 @@ export * from "./loop-types.js";
 export { createStableLoopId, createStableMemberIdentity } from "./loop-id.js";
 export { extractCorrelationAnchors, GENERIC_CORRELATION_TOKENS } from "./correlation/anchors.js";
 export { evaluatePairEligibility } from "./correlation/eligibility.js";
+export { correlateLoopItems } from "./correlation/correlate.js";
 export { deriveItemOccurrence } from "./correlation/occurrence.js";
 export {
   CORRELATION_CONTINUATION_WINDOW_DAYS,
@@ -12,6 +13,7 @@ export {
   scoreCorrelationPair,
 } from "./correlation/scoring.js";
 export type { CorrelationScoringContext } from "./correlation/scoring.js";
+export { buildLoopTimeline } from "./correlation/timeline.js";
 export * from "./correlation/types.js";
 export type { DeadlineExtraction } from "./deadline.js";
 export { extractDeadline } from "./deadline.js";
