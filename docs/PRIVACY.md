@@ -80,7 +80,9 @@ Open questions: 1
 
 Total Loop items: 13
 
+Source warnings: 0
 Detection warnings: 0
+Detection completeness: COMPLETE
 Private content printed: NO
 ```
 
@@ -99,6 +101,13 @@ and `packages/cli/src/__tests__/loop-presenter.test.ts` assert this
 directly: each builds a snapshot/result from fixtures containing known
 "sensitive" strings and checks the default report contains none of them,
 not merely that emails/phones are redacted.
+
+`loops:check` keeps input health visible without exposing input content:
+`Source warnings` counts hydration/normalization warnings separately from
+engine-level `Detection warnings`, and `Detection completeness` is
+`PARTIAL` whenever the source-warning count is non-zero. Only the count is
+printed; source-warning messages are not printed even in
+`--include-content` mode because a provider warning could contain a value.
 
 ## Explicit content inspection
 

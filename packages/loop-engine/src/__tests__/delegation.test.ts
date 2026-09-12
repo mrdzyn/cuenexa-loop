@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { detectDelegation } from "../detectors/delegation.js";
+import { detectSentence } from "../detectors/index.js";
 
 describe("detectDelegation", () => {
   it("detects direct-address delegation with 'can you'", () => {
@@ -11,6 +12,23 @@ describe("detectDelegation", () => {
   it("detects direct-address delegation with 'please'", () => {
     const match = detectDelegation("Alex, please prepare the report by Friday.");
     expect(match?.owner).toEqual({ label: "Alex" });
+  });
+
+  it("keeps named 'check with' direct address as a delegation", () => {
+    const match = detectSentence("John, can you check with the vendor?");
+    expect(match?.type).toBe("delegation");
+    expect(match?.owner).toEqual({ label: "John" });
+  });
+
+  it("keeps named 'follow up' direct address as a delegation", () => {
+    const match = detectSentence("Alex, please follow up with the client tomorrow.");
+    expect(match?.type).toBe("delegation");
+    expect(match?.owner).toEqual({ label: "Alex" });
+  });
+
+  it("keeps first-person and bare-imperative follow-ups as follow-ups", () => {
+    expect(detectSentence("I'll check with the vendor tomorrow.")?.type).toBe("follow_up");
+    expect(detectSentence("Follow up with the vendor tomorrow.")?.type).toBe("follow_up");
   });
 
   it("detects third-person future assignment", () => {

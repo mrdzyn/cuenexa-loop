@@ -13,13 +13,28 @@ import type { DetectorMatch } from "./types.js";
  * otherwise the plain follow-up (moderate) confidence tier applies.
  */
 export function detectFollowUp(sentence: string): DetectorMatch | null {
+  if (sentence.trim().endsWith("?")) {
+    return null;
+  }
   if (hasCommitmentNegation(sentence)) {
     return null;
   }
   if (HEDGE_PATTERN.test(sentence)) {
     return null;
   }
-  if (!FOLLOW_UP_VERB_PATTERN.test(sentence)) {
+  const actionPhrase = sentence.match(FOLLOW_UP_VERB_PATTERN);
+  if (!actionPhrase || actionPhrase.index === undefined) {
+    return null;
+  }
+
+  // A follow-up phrase is evidence only when the sentence itself has a
+  // future/actionable shape. Mentions in past statements, ordinary
+  // questions, and reported speech are not unfinished follow-up intent.
+  const prefix = sentence.slice(0, actionPhrase.index).trim();
+  const hasFirstPersonFuture = /^i(?:'ll|\s+will)\b/i.test(prefix);
+  const hasLetsIntent = /^let'?s$/i.test(prefix);
+  const isImperative = prefix.length === 0 || /^please$/i.test(prefix);
+  if (!hasFirstPersonFuture && !hasLetsIntent && !isImperative) {
     return null;
   }
 

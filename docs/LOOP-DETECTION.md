@@ -114,7 +114,8 @@ commitment than to create a misleading one.** Concretely, this means:
 ```text
 Per conversation:
   utterances → detectSentence() per sentence (see "Precedence") → candidates
-    → suppressResolvedOpenQuestions() — drops questions answered later in the *same* conversation
+    → suppressResolvedOpenQuestions() — drops questions answered by a later sentence
+      in the same utterance or bounded later utterances in the *same* conversation
 
 Facts, open Bee Todos: candidates directly (no per-conversation step)
 Completed Bee Todos: CompletionSignal (never becomes a candidate or a LoopItem)
@@ -134,12 +135,15 @@ This two-stage design (`packages/loop-engine/src/types.ts`'s
 between "raw detections" and "accepted items," without having to unpick
 validated, id-assigned `LoopItem`s.
 
-### Follow-up vs. commitment precedence
+### Follow-up intent and detector precedence
 
 A single sentence never produces more than one candidate
 (`detectSentence` in `detectors/index.ts` runs every detector and returns
-the first match in a fixed order). Follow-up and commitment are mutually
-exclusive by construction: `detectCommitment` explicitly declines a
+the first match in a fixed order). Explicit delegation is evaluated before
+generic follow-up detection, so "John, can you check with the vendor?"
+retains type `delegation` and owner `John` rather than becoming an
+owner-less follow-up. Follow-up and commitment are mutually exclusive by
+construction: `detectCommitment` explicitly declines a
 sentence that also carries an explicit follow-up verb ("check back",
 "check in", "check with", "circle back", "revisit", "follow up"),
 deferring to `detectFollowUp` instead. When a follow-up sentence *also*
@@ -147,6 +151,14 @@ carries an explicit "I'll"/"I will" trigger (e.g. "I'll check with the
 vendor tomorrow."), it's still classified `follow_up`, but keeps the
 higher, explicit-commitment confidence tier — it's still a strong,
 explicit self-commitment, just to a follow-up action specifically.
+
+The verb alone is not sufficient for conversation/fact detection.
+`detectFollowUp` requires an explicit first-person future (`I'll`/`I
+will`), `Let's ...`, a bare imperative beginning with the follow-up
+phrase, or a `Please ...` imperative. Past/completed mentions, ordinary
+questions, negated decisions, and reported suggestions do not create a
+new `follow_up` item. Open Bee Todos remain action-shaped evidence by
+construction and are classified separately in `candidateFromTodo`.
 
 ## Confidence semantics
 
@@ -220,6 +232,13 @@ conversation utterance and a Bee Todo describe the same action, dedup
 merges them into one `LoopItem` carrying evidence from both sources,
 rather than reporting the same task twice.
 
+Merge eligibility is also **semantic-type-aware**. Equal types may merge;
+the compatible action family (`commitment`, `follow_up`, `delegation`)
+may merge when the evidence represents the same task. A `decision` or
+`open_question` never merges into an action Todo from wording similarity
+alone. When a delegation and Todo merge, the result remains a delegation
+and preserves its owner even when the Todo has higher confidence.
+
 A merge is only attempted between candidates that could plausibly be "the
 same snapshot action" — two candidates from two **different**, named
 conversations never merge, even with identical text; a todo or fact
@@ -237,11 +256,15 @@ open item. `packages/loop-engine/src/completion.ts` fixes this:
 - A **completed** Bee Todo never becomes a candidate or a `LoopItem`
   itself — it becomes a `CompletionSignal` (just its text and todo id),
   used only to check other candidates against.
-- `reconcileCompletions`, run after deduplication, drops any candidate
+- `reconcileCompletions`, run after deduplication, considers only the
+  completable action types `commitment`, `follow_up`, and `delegation`,
+  and drops such a candidate
   whose evidence text conservatively matches (same 0.7 Jaccard threshold
   and comparison approach as deduplication itself — this is the same
   "same action?" judgment, just against a completion signal instead of
-  another open candidate) a completion signal's text.
+  another open candidate) a completion signal's text. Decisions and open
+  questions are never closed by a completed Todo, even when their wording
+  is highly similar.
 - An unrelated completed todo never affects an unrelated open candidate:
   "Send the estimate tomorrow." (completed) does not suppress "I'll send
   the *invoice* tomorrow." (open) — these measure ~0.4 similarity,
@@ -287,6 +310,10 @@ offset *at the specific instant in question* — correctly reflecting DST —
 and to determine "today" from that zone's perspective before resolving
 any relative phrase. See the `getTimeZoneOffsetMinutes` /
 `localDateInZone` / `zonedMidnightUTC` helpers in `deadline.ts`.
+End-of-day is calculated as local midnight of the *next calendar day*
+minus one millisecond, rather than local midnight plus a fixed 24 hours,
+so spring-forward (23-hour) and fall-back (25-hour) days both resolve to
+23:59:59.999 local time.
 
 CueNexa Loop resolves which time zone to use, in priority order
 (`packages/cli/src/timezone.ts`):
@@ -313,9 +340,11 @@ rejecting it (e.g. `new Date(Date.UTC(2026, 8, 31))`, "September 31",
 quietly becomes October 1), which would otherwise invent a deadline that
 was never actually said. "September 31", "April 31", and "February 30"
 always resolve to `dueAt: null` (with `dueAtPhrase` preserved);
-"February 29" resolves only when the calendar year actually being
-targeted is a real leap year. See `isValidCalendarDate` in `deadline.ts`
-and the regression tests covering all five cases in
+"February 29" resolves only when the requested current year itself is a
+real leap year. The current-year candidate is validated *before* any
+passed-date comparison or rollover, preventing an invalid 2027-02-29
+from normalizing to March and then rolling into valid leap-year 2028.
+See `isValidCalendarDate` in `deadline.ts` and the regression tests in
 `__tests__/deadline.test.ts`.
 
 ## Open-question reconciliation
@@ -331,8 +360,10 @@ Loop item would be misleading.
 cross-conversation correlation, it never looks outside the single
 conversation the question came from:
 
-- For each `open_question` candidate, look forward up to 5 utterances
-  within the *same* conversation.
+- For each `open_question` candidate, first inspect later sentences in
+  the same utterance, then look forward up to 5 utterances within the
+  *same* conversation. Sentence position is retained internally while
+  public utterance-level provenance remains intact.
 - Skip any later utterance that is itself a question — a question is
   never treated as an answer to another question.
 - If a later, non-question sentence shares enough vocabulary with the
@@ -370,7 +401,8 @@ output:
 - **`npm run loops:check`** (default) prints only structural counts:
   conversations/facts/todos processed, a count per Loop item type, a
   cross-cutting count of items with a resolved deadline, total item
-  count, and a warning count. It never prints an item's `text`, `owner`,
+  count, separate source/detection warning counts, and
+  `Detection completeness: COMPLETE/PARTIAL`. It never prints an item's `text`, `owner`,
   `dueAt`, or `evidence` — architecturally, not just by convention:
   `renderLoopConnectivityReport` only ever calls `.length` and `.filter().length`
   on the result, never reads a `LoopItem`'s content fields.

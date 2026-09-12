@@ -61,7 +61,9 @@ something might need to change independently:
     shape throws rather than becoming an indistinguishable "empty" page —
     see `docs/BEE_INTEGRATION.md#pagination`.
   - **normalization warnings** — collected, never swallowed, surfaced all
-    the way up to the CLI's warning count.
+    the way up to the CLI as a separate source-warning count. Detection
+    reports mark completeness `PARTIAL` whenever source warnings exist,
+    independently of detection-engine warnings.
 
   No Bee response shape leaks past this package — everything above it
   only ever sees `@cuenexa-loop/contracts` types.
@@ -81,6 +83,13 @@ something might need to change independently:
   [docs/LOOP-DETECTION.md](LOOP-DETECTION.md) for the full detection
   philosophy, confidence semantics, and deduplication/reconciliation
   approach.
+
+  Deduplication is semantic-type-aware: decisions/open questions cannot
+  be absorbed into action Todos, while compatible action merges preserve
+  delegation ownership. Completion reconciliation likewise applies only
+  to completable action types (`commitment`, `follow_up`, `delegation`).
+  Question reconciliation can use later sentences in the same utterance
+  before its bounded same-conversation later-utterance scan.
 
 - **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
   live acceptance checks (`npm run bee:check` / `npm run loops:check` run
@@ -142,6 +151,9 @@ an internal if/else. The default path is built to be structurally
 incapable of containing conversational content: it only ever reads
 `.length`/`.filter().length` off the result and a fixed set of status
 strings, never a record's `.text`, `.summary`, `.owner`, or `.evidence`.
+The detection presenter additionally reads only `snapshot.warnings.length`
+to report source health and derives `COMPLETE`/`PARTIAL` from that count;
+it never prints source-warning messages in either mode.
 See [docs/PRIVACY.md](PRIVACY.md#strict-privacy-by-default-output) and
 [docs/LOOP-DETECTION.md](LOOP-DETECTION.md#privacy-behavior) for what
 this guarantees and how it's tested.

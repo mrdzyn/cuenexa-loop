@@ -13,15 +13,37 @@ describe("follow-up detection and precedence", () => {
     expect(match?.type).toBe("follow_up");
   });
 
+  it("detects an explicit 'I will follow up' intent", () => {
+    expect(detectSentence("I will follow up with the vendor.")?.type).toBe("follow_up");
+  });
+
   it("detects a bare imperative 'follow up with' as a follow-up", () => {
     const match = detectSentence("Follow up with the vendor tomorrow.");
     expect(match?.type).toBe("follow_up");
   });
 
-  it("classifies 'I'll check with the vendor tomorrow.' as exactly one type (follow_up or commitment)", () => {
+  it("detects a bare imperative 'check back' follow-up", () => {
+    expect(detectSentence("Check back next week.")?.type).toBe("follow_up");
+  });
+
+  it("detects a please-prefixed imperative follow-up", () => {
+    expect(detectSentence("Please follow up with the vendor.")?.type).toBe("follow_up");
+  });
+
+  it("classifies 'I'll check with the vendor tomorrow.' as a follow-up", () => {
     const match = detectSentence("I'll check with the vendor tomorrow.");
-    expect(match).not.toBeNull();
-    expect(["follow_up", "commitment"]).toContain(match?.type);
+    expect(match?.type).toBe("follow_up");
+  });
+
+  it.each([
+    "I already checked with the vendor.",
+    "Did you check with the vendor?",
+    "Did you follow up with the vendor?",
+    "I'll check with the vendor?",
+    "We decided not to revisit this.",
+    "The vendor asked whether we should follow up.",
+  ])("does not classify a non-actionable mention: %s", (sentence) => {
+    expect(detectSentence(sentence)?.type).not.toBe("follow_up");
   });
 
   it("gives an 'I'll'-prefixed follow-up the explicit-commitment confidence tier", () => {

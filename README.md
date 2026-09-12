@@ -150,7 +150,9 @@ Open questions: 1
 
 Total Loop items: 13
 
+Source warnings: 0
 Detection warnings: 0
+Detection completeness: COMPLETE
 Private content printed: NO
 ```
 
@@ -161,6 +163,9 @@ Unlike `bee:check` (list-only, counts only), `loops:check` fetches each
 conversation's **full detail** (not just the list summary) so
 conversation-derived detection has real utterance text to work with — see
 [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md#full-conversation-hydration-bee-check-vs-loops-check).
+If hydration or normalization degrades that source snapshot,
+`loops:check` reports a non-zero source-warning count and
+`Detection completeness: PARTIAL` without printing source content.
 Calendar phrases ("today", "tomorrow", weekday names) resolve against an
 explicit `LOOP_TIMEZONE` override if you set one, otherwise Bee's own
 account time zone when available, otherwise your local system time zone
