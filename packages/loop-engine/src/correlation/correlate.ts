@@ -13,10 +13,12 @@ import type {
   LoopCorrelationWarning,
 } from "../loop-types.js";
 import type { LoopItem } from "../types.js";
+import { deriveLoopLifecycle } from "./lifecycle.js";
 import { deriveItemOccurrence } from "./occurrence.js";
 import { scoreCorrelationPair } from "./scoring.js";
 import type { CorrelationScoreResult } from "./types.js";
 import { buildLoopTimeline } from "./timeline.js";
+import { deriveLoopTitle } from "./title.js";
 
 interface CandidateMember {
   readonly item: LoopItem;
@@ -155,17 +157,19 @@ function buildLoop(
     }
   }
   links.sort((a, b) => a.fromItemId.localeCompare(b.fromItemId) || a.toItemId.localeCompare(b.toItemId));
+  const timeline = buildLoopTimeline(items, input.conversations);
+  const lifecycle = deriveLoopLifecycle(items, timeline);
 
   return LoopSchema.parse({
     id: createStableLoopId(items),
-    title: null,
-    state: "open",
+    title: deriveLoopTitle(items),
+    state: lifecycle.state,
     members: members.map(({ item }) => ({ itemId: item.id, item })),
-    timeline: buildLoopTimeline(items, input.conversations),
+    timeline,
     correlationLinks: links,
     correlationConfidence: Math.min(...links.map((link) => link.confidence)),
     snapshot: input.snapshot,
-    resolvedAt: null,
+    resolvedAt: lifecycle.resolvedAt,
   });
 }
 
