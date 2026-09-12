@@ -33,6 +33,9 @@ export const LoopCorrelationReasonCodeSchema = z.enum([
 ]);
 export type LoopCorrelationReasonCode = z.infer<typeof LoopCorrelationReasonCodeSchema>;
 
+/** Emitted Loops only represent high-confidence deterministic correlations. */
+export const MINIMUM_LOOP_CORRELATION_CONFIDENCE = 0.9;
+
 /** A complete, immutable-in-practice Phase 1A item retained as a Loop member. */
 export const LoopMemberSchema = z
   .object({
@@ -62,7 +65,7 @@ export const LoopCorrelationLinkSchema = z
   .object({
     fromItemId: z.string().min(1),
     toItemId: z.string().min(1),
-    confidence: z.number().min(0).max(1),
+    confidence: z.number().min(MINIMUM_LOOP_CORRELATION_CONFIDENCE).max(1),
     reasonCodes: z.array(LoopCorrelationReasonCodeSchema).min(1),
     sharedSpecificAnchorCount: z.number().int().nonnegative(),
   })
@@ -91,11 +94,11 @@ export const LoopSchema = z
     members: z.array(LoopMemberSchema).min(2),
     timeline: z.array(LoopTimelineEventSchema).min(2),
     correlationLinks: z.array(LoopCorrelationLinkSchema).min(1),
-    correlationConfidence: z.number().min(0).max(1),
-    sourceConversationIds: z.array(z.string().min(1)).min(2),
+    correlationConfidence: z.number().min(MINIMUM_LOOP_CORRELATION_CONFIDENCE).max(1),
     snapshot: LoopSnapshotMetadataSchema,
     resolvedAt: z.string().datetime().nullable(),
   })
+  .strict()
   .superRefine((loop, context) => {
     const memberIds = loop.members.map((member) => member.itemId);
     const uniqueMemberIds = new Set(memberIds);
@@ -103,9 +106,23 @@ export const LoopSchema = z
       context.addIssue({ code: z.ZodIssueCode.custom, message: "Loop members must be unique.", path: ["members"] });
     }
 
-    const uniqueConversationIds = new Set(loop.sourceConversationIds);
-    if (uniqueConversationIds.size !== loop.sourceConversationIds.length) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: "sourceConversationIds must be unique.", path: ["sourceConversationIds"] });
+    const conversationMembers = loop.members.filter((member) => member.item.source.conversationId !== null);
+    const conversationIds = new Set(conversationMembers.map((member) => member.item.source.conversationId));
+    if (conversationMembers.length < 2 || conversationIds.size < 2) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A Loop must contain members from at least two distinct conversations.",
+        path: ["members"],
+      });
+    }
+
+    const providers = new Set(loop.members.map((member) => member.item.source.provider));
+    if (providers.size !== 1) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "A Loop's members must originate from the same provider.",
+        path: ["members"],
+      });
     }
 
     for (const event of loop.timeline) {
