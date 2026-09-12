@@ -1,4 +1,5 @@
 import type { BeeRealtimeSubscription } from "@cuenexa-loop/bee-adapter";
+import type { EphemeralRealtimeEvent } from "@cuenexa-loop/contracts";
 import { ProvisionalAwareness } from "@cuenexa-loop/loop-engine";
 import type { NotificationPlan, ReviewModel } from "@cuenexa-loop/loop-store";
 import type { AuthoritativeSyncResult } from "./persistent-orchestration.js";
@@ -54,55 +55,41 @@ export async function runAmbientWatch(
 
   for (let attempt = 0; !signal.aborted && attempt <= WATCH_RECONNECT_BACKOFF_MS.length; attempt += 1) {
     let subscription: BeeRealtimeSubscription | null = null;
+    let subscriptionClosed = false;
+    const attemptController = new AbortController();
+    const cancelAttempt = () => attemptController.abort();
+    signal.addEventListener("abort", cancelAttempt, { once: true });
+    const closeSubscription = () => {
+      if (subscriptionClosed) return;
+      subscriptionClosed = true;
+      attemptController.abort();
+      try {
+        subscription?.close();
+      } catch {
+        // Cancellation is best-effort and never exposes transport details.
+      }
+    };
     try {
-      subscription = dependencies.subscribe(signal);
+      subscription = dependencies.subscribe(attemptController.signal);
       subscriptionsOpened += 1;
       dependencies.output("CueNexa Loop realtime watch ready (foreground). Provisional awareness is not persisted.");
-      const iterator = subscription.events[Symbol.asyncIterator]();
-      let pending = iterator.next();
-
-      while (!signal.aborted) {
-        const tickController = new AbortController();
-        const cancelTick = () => tickController.abort();
-        signal.addEventListener("abort", cancelTick, { once: true });
-        const outcome = await Promise.race([
-          pending.then((value) => ({ kind: "event" as const, value })),
-          wait(WATCH_TICK_MS, tickController.signal).then(() => ({ kind: "tick" as const })),
-        ]).finally(() => {
-          tickController.abort();
-          signal.removeEventListener("abort", cancelTick);
-        });
-        if (signal.aborted) break;
-        if (outcome.kind === "tick") {
-          const current = now();
-          coordinator.expire(current);
-          if (dependencies.consumeManualRefreshRequest?.()) {
-            authoritativeRefreshes += await refreshAndRender(coordinator, "manual", dependencies, includeContent, current);
-          } else if (coordinator.pendingRefreshDue(current)) {
-            authoritativeRefreshes += await flushPendingAndRender(coordinator, dependencies, includeContent, current);
-          } else if (coordinator.idleRefreshDue(current)) {
-            authoritativeRefreshes += await refreshAndRender(coordinator, "idle", dependencies, includeContent, current);
-          }
-          continue;
-        }
-        if (outcome.value.done) break;
-        pending = iterator.next();
-        const event = outcome.value.value;
-        const observed = coordinator.observe(event, initial.timeZone);
-        for (const provisional of observed.emitted) {
-          dependencies.output(renderProvisionalSignal(provisional, includeContent));
-        }
-        if (event.kind === "conversation_state" && event.state === "processed") {
-          const current = now();
-          authoritativeRefreshes += await refreshAndRender(
-            coordinator, "conversation_processed", dependencies, includeContent, current,
-          );
-        }
-      }
+      const eventTask = consumeRealtimeEvents(
+        subscription.events, coordinator, dependencies, includeContent, initial.timeZone,
+        attemptController.signal, now, (count) => { authoritativeRefreshes += count; },
+      );
+      const controlTask = runPeriodicControls(
+        coordinator, dependencies, includeContent, attemptController.signal, wait, now,
+        (count) => { authoritativeRefreshes += count; },
+      );
+      const outcome = await firstTaskOutcome(eventTask, controlTask);
+      closeSubscription();
+      await Promise.allSettled([eventTask, controlTask]);
+      if (outcome.status === "rejected") throw outcome.reason;
     } catch {
       if (!signal.aborted) dependencies.output("Realtime unavailable — authoritative CueNexa state remains available.");
     } finally {
-      subscription?.close();
+      closeSubscription();
+      signal.removeEventListener("abort", cancelAttempt);
     }
 
     if (signal.aborted || attempt === WATCH_RECONNECT_BACKOFF_MS.length) break;
@@ -128,6 +115,71 @@ export async function runAmbientWatch(
   }
 
   return { subscriptionsOpened, reconnectsAttempted, authoritativeRefreshes };
+}
+
+async function consumeRealtimeEvents(
+  events: AsyncIterable<EphemeralRealtimeEvent>,
+  coordinator: RealtimeHandoffCoordinator,
+  dependencies: WatchRuntimeDependencies,
+  includeContent: boolean,
+  timeZone: string,
+  signal: AbortSignal,
+  now: () => string,
+  recordRefreshes: (count: number) => void,
+): Promise<void> {
+  for await (const event of events) {
+    if (signal.aborted) break;
+    const observed = coordinator.observe(event, timeZone);
+    for (const provisional of observed.emitted) {
+      dependencies.output(renderProvisionalSignal(provisional, includeContent));
+    }
+    if (event.kind === "conversation_state" && event.state === "processed") {
+      recordRefreshes(await refreshAndRender(
+        coordinator, "conversation_processed", dependencies, includeContent, now(),
+      ));
+    }
+    if (signal.aborted) break;
+  }
+}
+
+async function runPeriodicControls(
+  coordinator: RealtimeHandoffCoordinator,
+  dependencies: WatchRuntimeDependencies,
+  includeContent: boolean,
+  signal: AbortSignal,
+  wait: (milliseconds: number, signal: AbortSignal) => Promise<void>,
+  now: () => string,
+  recordRefreshes: (count: number) => void,
+): Promise<void> {
+  while (!signal.aborted) {
+    await wait(WATCH_TICK_MS, signal);
+    if (signal.aborted) break;
+    const current = now();
+    coordinator.expire(current);
+    if (dependencies.consumeManualRefreshRequest?.()) {
+      recordRefreshes(await refreshAndRender(coordinator, "manual", dependencies, includeContent, current));
+    } else if (coordinator.pendingRefreshDue(current)) {
+      recordRefreshes(await flushPendingAndRender(coordinator, dependencies, includeContent, current));
+    } else if (coordinator.idleRefreshDue(current)) {
+      recordRefreshes(await refreshAndRender(coordinator, "idle", dependencies, includeContent, current));
+    }
+  }
+}
+
+async function firstTaskOutcome(
+  eventTask: Promise<void>,
+  controlTask: Promise<void>,
+): Promise<PromiseSettledResult<void>> {
+  return Promise.race([
+    eventTask.then(
+      () => ({ status: "fulfilled", value: undefined }) as const,
+      (reason: unknown) => ({ status: "rejected", reason }) as const,
+    ),
+    controlTask.then(
+      () => ({ status: "fulfilled", value: undefined }) as const,
+      (reason: unknown) => ({ status: "rejected", reason }) as const,
+    ),
+  ]);
 }
 
 async function refreshAndRender(

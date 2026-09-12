@@ -38,12 +38,33 @@ describe("ambient watch runtime", () => {
     const wait = vi.fn(async (_milliseconds: number, _signal: AbortSignal) => controller.abort());
     await runAmbientWatch({
       ...dependencies([]),
-      subscribe: () => ({ events: neverEnding(), close }),
+      subscribe: (signal) => ({ events: neverEnding(signal), close }),
       wait,
     }, controller.signal);
     expect(close).toHaveBeenCalledOnce();
     expect(wait.mock.calls[0]?.[0]).toBe(WATCH_TICK_MS);
     expect(wait.mock.calls[0]?.[1].aborted).toBe(true);
+  });
+
+  it("keeps one bounded iterator reaction across prolonged realtime silence", async () => {
+    const controller = new AbortController();
+    const silence = instrumentedSilence();
+    let ticks = 0;
+
+    await runAmbientWatch({
+      ...dependencies([]),
+      subscribe: () => silence.subscription,
+      wait: async (milliseconds) => {
+        expect(milliseconds).toBe(WATCH_TICK_MS);
+        ticks += 1;
+        if (ticks === 100) controller.abort();
+      },
+    }, controller.signal);
+
+    expect(ticks).toBe(100);
+    expect(silence.nextCalls()).toBe(1);
+    expect(silence.thenCalls()).toBeLessThanOrEqual(1);
+    expect(silence.close).toHaveBeenCalledOnce();
   });
 
   it("keeps persistent review visible and bounds reconnects when realtime fails", async () => {
@@ -68,14 +89,21 @@ describe("ambient watch runtime", () => {
   it("does not lose a gap immediately after initial sync and coalesces rapid gaps into one permitted repair", async () => {
     const refresh = vi.fn(async () => syncResult());
     const time = advancingTime();
-    const wait = vi.fn(time.wait);
+    const controller = new AbortController();
+    const wait = vi.fn(async (milliseconds: number, signal: AbortSignal) => {
+      if (signal !== controller.signal) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
+        if (signal.aborted) return;
+      }
+      await time.wait(milliseconds, signal);
+    });
     const result = await runAmbientWatch({
       ...dependencies([]),
       authoritativeRefresh: refresh,
       subscribe: () => stream([]),
       wait,
       now: time.now,
-    }, new AbortController().signal);
+    }, controller.signal);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(result.authoritativeRefreshes).toBe(1);
     expect(wait.mock.calls.length).toBeLessThanOrEqual(16);
@@ -103,15 +131,13 @@ describe("ambient watch runtime", () => {
     const controller = new AbortController();
     const close = vi.fn();
     const output: string[] = [];
-    const events = (async function* () {
-      yield { kind: "conversation_state", id: "state_1", provider: "bee", providerEventId: null,
-        sessionId: null, conversationId: "conversation_synthetic", observedAt: NOW, state: "processed" } as const;
-      await new Promise<void>(() => undefined);
-    })();
     const result = await runAmbientWatch({
       ...dependencies(output),
       authoritativeRefresh: async () => { throw new Error("synthetic private history error"); },
-      subscribe: () => ({ events, close }),
+      subscribe: (signal) => ({ events: eventThenSilence({
+        kind: "conversation_state", id: "state_1", provider: "bee", providerEventId: null,
+        sessionId: null, conversationId: "conversation_synthetic", observedAt: NOW, state: "processed",
+      }, signal), close }),
       output: (text) => {
         output.push(text);
         if (text.startsWith("Authoritative refresh unavailable")) controller.abort();
@@ -136,15 +162,10 @@ describe("ambient watch runtime", () => {
       .mockResolvedValueOnce(changed);
     const time = timeAfterInitialSync();
     const wait = vi.fn(time.wait);
-    const events = (async function* () {
-      yield processedConversation();
-      await new Promise<void>(() => undefined);
-    })();
-
     await runAmbientWatch({
       ...dependencies(output),
       authoritativeRefresh: refresh,
-      subscribe: () => ({ events, close }),
+      subscribe: (signal) => ({ events: eventThenSilence(processedConversation(), signal), close }),
       now: time.now,
       wait,
       output: (text) => {
@@ -170,7 +191,7 @@ describe("ambient watch runtime", () => {
     await runAmbientWatch({
       ...dependencies([]),
       authoritativeRefresh: refresh,
-      subscribe: () => ({ events: neverEnding(), close: vi.fn() }),
+      subscribe: (signal) => ({ events: neverEnding(signal), close: vi.fn() }),
       consumeManualRefreshRequest: () => { const result = requested; requested = false; return result; },
       wait: async () => undefined,
       now: clockAfterInitialSync(),
@@ -205,8 +226,55 @@ function stream(events: readonly EphemeralRealtimeEvent[]): BeeRealtimeSubscript
   return { events: (async function* () { yield* events; })(), close: vi.fn() };
 }
 
-function neverEnding(): AsyncIterable<EphemeralRealtimeEvent> {
-  return { [Symbol.asyncIterator]: () => ({ next: () => new Promise<IteratorResult<EphemeralRealtimeEvent>>(() => undefined) }) };
+function neverEnding(signal: AbortSignal): AsyncIterable<EphemeralRealtimeEvent> {
+  return {
+    [Symbol.asyncIterator]: () => ({
+      next: () => signal.aborted
+        ? Promise.resolve({ done: true, value: undefined })
+        : new Promise<IteratorResult<EphemeralRealtimeEvent>>((resolve) => {
+          signal.addEventListener("abort", () => resolve({ done: true, value: undefined }), { once: true });
+        }),
+    }),
+  };
+}
+
+async function* eventThenSilence(
+  event: EphemeralRealtimeEvent,
+  signal: AbortSignal,
+): AsyncIterable<EphemeralRealtimeEvent> {
+  yield event;
+  if (!signal.aborted) {
+    await new Promise<void>((resolve) => signal.addEventListener("abort", () => resolve(), { once: true }));
+  }
+}
+
+function instrumentedSilence() {
+  let nextCallCount = 0;
+  let thenCallCount = 0;
+  let finish!: (result: IteratorResult<EphemeralRealtimeEvent>) => void;
+  const unresolved = new Promise<IteratorResult<EphemeralRealtimeEvent>>((resolve) => { finish = resolve; });
+  const originalThen = unresolved.then.bind(unresolved);
+  unresolved.then = ((...args: Parameters<typeof unresolved.then>) => {
+    thenCallCount += 1;
+    return originalThen(...args);
+  }) as typeof unresolved.then;
+  const close = vi.fn(() => finish({ done: true, value: undefined }));
+  return {
+    subscription: {
+      events: {
+        [Symbol.asyncIterator]: () => ({
+          next: () => {
+            nextCallCount += 1;
+            return unresolved;
+          },
+        }),
+      },
+      close,
+    } satisfies BeeRealtimeSubscription,
+    close,
+    nextCalls: () => nextCallCount,
+    thenCalls: () => thenCallCount,
+  };
 }
 
 function utterance(): EphemeralRealtimeEvent {

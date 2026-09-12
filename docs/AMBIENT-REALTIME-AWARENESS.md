@@ -615,6 +615,8 @@ Test:
 - UUID-only provisional awareness is retired by numeric processed history only
   after an explicit provider-supplied UUID↔ID mapping;
 - no busy loop;
+- prolonged stream silence retains one event-pump read and one control timer,
+  without per-tick reactions or an event queue;
 - bounded memory;
 - old commands still work.
 

@@ -184,6 +184,11 @@ something might need to change independently:
   arrive during cooldown or an in-flight refresh; the runtime performs one
   deferred attempt when permitted. A failed attempt retains one coalesced retry
   request while the bounded foreground runtime remains active.
+  Each subscription attempt runs exactly one sequential realtime event pump
+  and one independent periodic control task. The pump owns the sole outstanding
+  iterator read; ticks never attach reactions to it and no event queue is
+  created. Ending, failure, or cancellation aborts the attempt, closes its
+  subscription, and joins both tasks before any reconnect begins.
 
 ## Why normalization never throws
 

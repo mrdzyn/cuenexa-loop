@@ -114,9 +114,13 @@ export class RealtimeHandoffCoordinator {
     this.pendingRefresh = false;
     this.refreshInFlight = true;
     this.lastRefreshAttemptMs = Date.parse(now);
+    const refreshRevision = this.activityRevision;
     try {
       const result = await this.authoritativeRefresh(now);
-      this.refreshedRevision = this.activityRevision;
+      // Activity observed while the historical fetch is in flight was not
+      // necessarily present in that fetch and must remain eligible for a
+      // later idle/pending refresh.
+      this.refreshedRevision = Math.max(this.refreshedRevision, refreshRevision);
       this.awareness.retireConversations(result.detectedConversationIds);
       return { attempted: true, trigger, result };
     } catch (error) {

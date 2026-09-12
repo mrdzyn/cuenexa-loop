@@ -202,6 +202,19 @@ describe("authoritative realtime handoff", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
+  it("does not mark realtime activity observed during a historical fetch as already refreshed", async () => {
+    let finish!: (value: ReturnType<typeof emptySync>) => void;
+    const refresh = vi.fn(() => new Promise<ReturnType<typeof emptySync>>((resolve) => { finish = resolve; }));
+    const coordinator = coordinatorWith(refresh);
+    const first = coordinator.refresh("realtime_gap", NOW);
+    coordinator.observe(utterance("during_fetch", "utterance_during_fetch", "2026-09-12T08:00:01.000Z"), "UTC");
+    finish(emptySync());
+    await first;
+
+    expect(coordinator.idleRefreshDue("2026-09-12T08:00:31.000Z")).toBe(false);
+    expect(coordinator.hasPendingRefresh()).toBe(true);
+  });
+
   it("retains one bounded retry after a failed refresh without exposing the error", async () => {
     const refresh = vi.fn()
       .mockRejectedValueOnce(new Error("synthetic private history error"))
