@@ -16,6 +16,10 @@
                     |
                     | in-memory only
                     v
+[ @cuenexa-loop/loop-engine — deterministic detection/correlation ]
+                    |
+                    | structured result; no I/O
+                    v
 [ @cuenexa-loop/cli — redacts, truncates, prints to your terminal ]
 ```
 
@@ -63,11 +67,15 @@ the local `bee` CLI even against an account with many recent
 conversations. See `docs/LOOP-DETECTION.md` ("Full conversation
 hydration").
 
+`loops:correlate` reuses that hydrated snapshot. Correlation itself adds
+no subprocess, network, credential, storage, database, model-provider, or
+third-party API boundary.
+
 ## No cloud dependency
 
-Phase 0 has no AWS, Amazon Bedrock, or third-party API dependency of any
-kind. The only external process this codebase talks to is the locally
-installed `bee` CLI.
+Phase 1 has no AWS, Amazon Bedrock, model-provider, or third-party API
+dependency of any kind. The only external process this codebase talks to
+is the locally installed `bee` CLI.
 
 ## Dependency hygiene
 
@@ -78,8 +86,8 @@ Runtime dependencies are kept deliberately minimal:
 official client library) in `@cuenexa-loop/bee-adapter`. Nothing else at
 runtime — `@cuenexa-loop/loop-engine` in particular adds zero new
 third-party dependencies and no network capability: its regex/heuristic
-detection logic uses only `zod` (already present) and Node/TypeScript
-built-ins. A smaller dependency tree is a smaller supply-chain surface
+detection/correlation logic uses only `zod` (already present) and
+Node/TypeScript built-ins. A smaller dependency tree is a smaller supply-chain surface
 for a project that, by its nature, ends up close to someone's personal
 data.
 
@@ -122,9 +130,25 @@ Every fixture used by `npm test` is synthetic — see `docs/PRIVACY.md`
 ("No real data in this repository") and `docs/BEE_INTEGRATION.md`
 ("Synthetic-only testing") for what that covers and why.
 
+## Phase 1B correlation threats
+
+- **False-positive inference:** confidence is a deterministic heuristic,
+  not probability. Hard generic-language/state/source guards, the 0.90
+  threshold, and complete-link grouping prioritize precision and accept
+  false negatives.
+- **Accidental disclosure:** raw anchors and source content remain in
+  memory. Links contain reason codes/counts, not anchor text. The default
+  presenter cannot read private Loop fields; content mode redacts before
+  truncating and never displays coordinates.
+- **Identifier disclosure:** stable IDs are SHA-256-derived digests over
+  canonical source/evidence identity. Raw evidence, parties, timestamps,
+  and run-local IDs never appear in the identifier.
+- **Overclaiming:** correlation confidence expresses fixed heuristic
+  support only, not statistical certainty or an AI conclusion.
+
 ## Reporting a vulnerability
 
-This is an early-stage open-source project (Phase 0 + Phase 1A) with no
+This is an early-stage open-source project (Phase 1) with no
 production deployment. If you find a security issue, please open a GitHub issue on
 this repository describing the concern; avoid including any real Bee data
 in the report.

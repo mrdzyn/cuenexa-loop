@@ -18,6 +18,8 @@ export const NON_STRENGTHENING_PHRASE_TOKENS = new Set([
   "update",
   "tomorrow",
   "today",
+  "after",
+  "before",
   "email",
   "call",
   "next",

@@ -22,7 +22,8 @@ jobs:
       - run: npm test
       - run: npm run build
       - run: npm audit
-      # Deliberately not run here: `npm run bee:check`. It requires a real,
+      # Deliberately not run here: `npm run bee:check`, `npm run loops:check`,
+      # or `npm run loops:correlate`. They require a real,
       # locally authenticated Bee CLI session and is documented as a manual
       # step for the repository owner (see docs/BEE_INTEGRATION.md) — CI
       # never authenticates to Bee, accesses a real account, or holds any

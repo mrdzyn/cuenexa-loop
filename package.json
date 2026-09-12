@@ -18,7 +18,8 @@
     "clean": "tsc -b --clean && rimraf packages/*/dist",
     "start": "npm run start --workspace @cuenexa-loop/cli",
     "bee:check": "npm run build && node packages/cli/dist/index.js",
-    "loops:check": "npm run build && node packages/cli/dist/loops-check.js"
+    "loops:check": "npm run build && node packages/cli/dist/loops-check.js",
+    "loops:correlate": "npm run build && node packages/cli/dist/loops-correlate.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

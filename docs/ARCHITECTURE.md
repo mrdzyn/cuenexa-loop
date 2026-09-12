@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 0 + Phase 1A pipeline
+## Phase 1 pipeline
 
 ```text
 Apple Watch
@@ -11,7 +11,8 @@ Bee CLI authenticated environment (the `bee` executable on PATH)
     ↓  createBeeClient() — @beeai/cli/lib
 BeeAdapterClient (packages/bee-adapter/src/bee-client.ts)
     ↓  fetchBeeSnapshot (list-only, bee:check) OR
-       fetchDetectionSnapshot (+ conversations.get(id) hydration, loops:check)
+       fetchDetectionSnapshot (+ conversations.get(id) hydration,
+       loops:check / loops:correlate)
        (packages/bee-adapter/src/service.ts)
     ↓  normalizeConversation / normalizeFact / normalizeTodo
        (packages/bee-adapter/src/normalize/*.ts)
@@ -20,19 +21,25 @@ CueNexa Loop contracts — LoopConversation, LoopFact, LoopTodo
     ↓  detectLoopItems (packages/loop-engine/src/engine.ts)
 Structured Loop Items — LoopItem[]
      (packages/loop-engine/src/types.ts)
+    ↓  anchors → eligibility → deterministic score (0.90 threshold)
+    ↓  complete-link grouping → stable ID → timeline/lifecycle/title
+Structured snapshot-local Loops — Loop[]
+     (packages/loop-engine/src/loop-types.ts)
     ↓  renderConnectivityReport / renderContentReport
        renderLoopConnectivityReport / renderLoopContentReport
-       (packages/cli/src/presenter.ts, packages/cli/src/loop-presenter.ts)
+       renderCorrelationConnectivityReport / renderCorrelationContentReport
+       (packages/cli/src/*presenter.ts)
 Privacy-Safe CLI output
 ```
 
 Everything after "Bee CLI authenticated environment" runs in a single
-short-lived Node process (`npm start`/`npm run loops:check` in
-`packages/cli`), in memory, and exits. Nothing in this pipeline writes to
+short-lived Node process (`npm start`, `npm run loops:check`, or
+`npm run loops:correlate` in `packages/cli`), in memory, and exits.
+Nothing in this pipeline writes to
 disk, opens a database, or makes any network call itself — `@beeai/cli/lib`
 shells out to the already locally-authenticated `bee` executable, which
-is the only thing that talks to Bee's servers; Loop detection itself is
-pure, deterministic, local computation with no I/O at all.
+is the only thing that talks to Bee's servers; Loop detection and
+correlation are pure, deterministic, local computations with no I/O.
 
 ## Package boundaries
 
@@ -68,8 +75,8 @@ something might need to change independently:
   No Bee response shape leaks past this package — everything above it
   only ever sees `@cuenexa-loop/contracts` types.
 
-- **`@cuenexa-loop/loop-engine`** is the Phase 1A deterministic Loop
-  detection engine: `detectLoopItems()` turns `LoopConversation[]`/
+- **`@cuenexa-loop/loop-engine`** owns provider-independent Phase 1
+  intelligence. Phase 1A's `detectLoopItems()` turns `LoopConversation[]`/
   `LoopFact[]`/`LoopTodo[]` into structured `LoopItem[]` via a
   candidate → dedup → completion-reconciliation → confidence-filter →
   validated-`LoopItem` pipeline (`candidate-builder.ts` → `dedup.ts` →
@@ -91,9 +98,19 @@ something might need to change independently:
   Question reconciliation can use later sentences in the same utterance
   before its bounded same-conversation later-utterance scan.
 
+  Phase 1B's `correlateLoopItems()` operates over preserved LoopItems and
+  the same normalized snapshot. It extracts conservative anchors, applies
+  hard gates, scores eligible pairs with fixed weights, and accepts only
+  scores at or above 0.90. Complete-link grouping requires every pair in a
+  Loop to be accepted, preventing weak transitive expansion. Loop
+  confidence is the weakest required link. Stable IDs use source/evidence
+  digests rather than run-local IDs or raw content. See
+  [docs/LOOP-CORRELATION.md](LOOP-CORRELATION.md).
+
 - **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
-  live acceptance checks (`npm run bee:check` / `npm run loops:check` run
-  this package's default mode for real). It has no business logic of its
+  live acceptance checks (`npm run bee:check`, `npm run loops:check`, and
+  `npm run loops:correlate` run this package's default mode for real). It
+  has no business logic of its
   own — it composes the other packages and decides, based on
   `--include-content`, which presenter to use.
 
@@ -132,28 +149,29 @@ record.
 
 ## Why there's no persistence layer
 
-Phase 0 and Phase 1A are scoped to prove the pipeline above end-to-end
+Phase 0 and Phase 1 are scoped to prove the pipeline above end-to-end
 without taking on the responsibility of storing anyone's conversational
 data. See [docs/PRIVACY.md](PRIVACY.md) for the reasoning;
 architecturally, the consequence is that there is no database package, no
 file-writing code path in the CLI, and no caching layer — both
 `fetchBeeSnapshot` and `fetchDetectionSnapshot` are called fresh on every
-run, and `detectLoopItems` is a pure function with no memory of any
-previous run.
+run, and `detectLoopItems`/`correlateLoopItems` are pure functions with no
+memory of any previous run. Loops therefore describe one hydrated
+snapshot; they are not durable records.
 
 ## Why default output and `--include-content` are separate code paths
 
-`packages/cli/src/presenter.ts` (Bee snapshots) and
-`packages/cli/src/loop-presenter.ts` (Loop items) each export two
+`packages/cli/src/presenter.ts` (Bee snapshots), `loop-presenter.ts`
+(LoopItems), and `correlation-presenter.ts` (Loops) each export two
 independent render functions — a default connectivity/detection-count
 report and a `--include-content` report — rather than one function with
 an internal if/else. The default path is built to be structurally
 incapable of containing conversational content: it only ever reads
 `.length`/`.filter().length` off the result and a fixed set of status
 strings, never a record's `.text`, `.summary`, `.owner`, or `.evidence`.
-The detection presenter additionally reads only `snapshot.warnings.length`
+The detection and correlation presenters additionally read only warning counts
 to report source health and derives `COMPLETE`/`PARTIAL` from that count;
 it never prints source-warning messages in either mode.
 See [docs/PRIVACY.md](PRIVACY.md#strict-privacy-by-default-output) and
-[docs/LOOP-DETECTION.md](LOOP-DETECTION.md#privacy-behavior) for what
+[docs/LOOP-CORRELATION.md](LOOP-CORRELATION.md#privacy-behavior) for what
 this guarantees and how it's tested.

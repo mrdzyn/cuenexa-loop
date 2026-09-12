@@ -6,9 +6,10 @@ Bee remembers what happened. CueNexa Loop helps you understand what
 remains unfinished. A **Loop item** is one structured, individual piece
 of that: a commitment, decision, delegation, follow-up, or open question
 that CueNexa Loop found explicit evidence for in your normalized Bee
-data. Phase 1A produces individual `LoopItem` records only — it does not
-yet group related items across conversations into a persistent "Loop"
-(that's Phase 1B; see "Explicitly out of scope" below).
+data. Phase 1A produces individual `LoopItem` records only and does not
+group related items across conversations. Phase 1B performs that separate,
+snapshot-local aggregation step; see
+`docs/LOOP-CORRELATION.md`.
 
 ```text
 Bee
@@ -485,11 +486,11 @@ output:
   many recent conversations. Phase 1A does not implement caching between
   runs.
 
-## Explicitly out of scope (belongs to Phase 1B or later)
+## Boundary with Phase 1B
 
-Cross-conversation correlation and grouping into persistent "Loops",
-semantic embeddings, an LLM/AI extraction layer, confidence scoring
-beyond the fixed heuristic bands above, any form of persistence, and any
-cloud dependency. See the Phase 1A brief for the complete list; none of
-it is implemented here, and `packages/loop-engine` has no dependency on
-anything Bee-specific — only on `@cuenexa-loop/contracts`.
+Phase 1A stops at preserved `LoopItem[]`. It does not deduplicate across
+conversations or change item provenance, state, evidence, or detection
+confidence. Phase 1B consumes those items as a separate aggregation layer;
+see `docs/LOOP-CORRELATION.md`. Persistence, embeddings, LLM extraction,
+cloud processing, and durable tracking remain out of scope. The engine has
+no Bee-specific dependency — only normalized contracts.
