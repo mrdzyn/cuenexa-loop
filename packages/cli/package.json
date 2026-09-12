@@ -16,6 +16,7 @@
   "dependencies": {
     "@cuenexa-loop/bee-adapter": "*",
     "@cuenexa-loop/contracts": "*",
-    "@cuenexa-loop/loop-engine": "*"
+    "@cuenexa-loop/loop-engine": "*",
+    "@cuenexa-loop/loop-store": "*"
   }
 }

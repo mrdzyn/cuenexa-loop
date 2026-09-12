@@ -65,6 +65,15 @@ each conversation's full detail via `getConversation(id)`, used by
 conversation hydration") for why the distinction exists and how hydration
 failures are handled.
 
+Phase 2 adds `fetchCompleteDetectionSnapshot` solely for `loops:sync`.
+It follows Bee cursors with finite page/item caps, detects cursor repetition,
+de-duplicates page boundaries, and hydrates all fetched conversations. A cap
+or repeated cursor is reported as partial rather than silently treated as an
+authoritative history. Bee may take time to process mobile history; run a
+manual Bee processing action if needed, then run `loops:sync` again. CueNexa
+Loop deliberately does not ingest Bee realtime events or write anything back
+to Bee.
+
 ## Optional proxy fallback: none
 
 An earlier version of this adapter talked to Bee's local `bee proxy` HTTP

@@ -1,5 +1,6 @@
 import type { LoopConversation, LoopFact, LoopTodo, NormalizationWarning, Page } from "@cuenexa-loop/contracts";
 import type { BeeAdapterClient } from "./bee-client.js";
+import type { ListPageOptions } from "./bee-client.js";
 import { mapWithConcurrency } from "./concurrency.js";
 import { normalizeConversation, normalizeFact, normalizeTodo } from "./normalize/index.js";
 import { coerceId } from "./normalize/util.js";
@@ -28,6 +29,23 @@ export interface FetchDetectionSnapshotOptions {
   /** Max concurrent `conversations.get(id)` calls when hydrating full conversation detail. */
   concurrency?: number;
 }
+
+/** Full, bounded pagination used only by Phase 2's authoritative local sync. */
+export interface FetchCompleteDetectionSnapshotOptions extends FetchDetectionSnapshotOptions {
+  readonly pageSize?: number;
+  readonly maxPages?: number;
+  readonly maxItems?: number;
+}
+
+export interface CompleteDetectionSnapshot {
+  readonly snapshot: BeeSnapshot;
+  /** False means a page bound or repeated cursor prevented an authoritative scan. */
+  readonly complete: boolean;
+}
+
+const DEFAULT_PAGE_SIZE = 100;
+const DEFAULT_MAX_PAGES = 100;
+const DEFAULT_MAX_ITEMS = 10_000;
 
 /**
  * Fetches the first page of recent conversations, facts, and todos from
@@ -100,6 +118,44 @@ export async function fetchDetectionSnapshot(
   return { ...snapshot, warnings: [...hydrationWarnings, ...snapshot.warnings] };
 }
 
+/**
+ * Fetches all currently processable Bee pages with explicit caps and loop
+ * detection, then hydrates every conversation. This is intentionally a new
+ * API: Phase 1's first-page detection path remains lightweight and unchanged.
+ */
+export async function fetchCompleteDetectionSnapshot(
+  client: BeeAdapterClient,
+  options: FetchCompleteDetectionSnapshotOptions = {},
+): Promise<CompleteDetectionSnapshot> {
+  const retrievedAt = new Date().toISOString();
+  const pageSize = positiveBound(options.pageSize, DEFAULT_PAGE_SIZE);
+  const maxPages = positiveBound(options.maxPages, DEFAULT_MAX_PAGES);
+  const maxItems = positiveBound(options.maxItems, DEFAULT_MAX_ITEMS);
+  const concurrency = options.concurrency ?? DEFAULT_HYDRATION_CONCURRENCY;
+  const [conversations, facts, todos] = await Promise.all([
+    fetchAllPages((page) => client.listConversations(page), pageSize, maxPages, maxItems, "conversations"),
+    fetchAllPages((page) => client.listFacts(page), pageSize, maxPages, maxItems, "facts"),
+    fetchAllPages((page) => client.listTodos(page), pageSize, maxPages, maxItems, "todos"),
+  ]);
+  const hydrationWarnings: NormalizationWarning[] = [];
+  const hydratedItems = await mapWithConcurrency(
+    dedupeRaw(conversations.items),
+    concurrency,
+    (summary) => hydrateConversation(client, summary, hydrationWarnings),
+  );
+  const snapshot = buildSnapshot(
+    { items: hydratedItems, nextCursor: conversations.nextCursor },
+    { items: dedupeRaw(facts.items), nextCursor: facts.nextCursor },
+    { items: dedupeRaw(todos.items), nextCursor: todos.nextCursor },
+    retrievedAt,
+  );
+  const paginationWarnings = [...conversations.warnings, ...facts.warnings, ...todos.warnings];
+  return {
+    snapshot: { ...snapshot, warnings: [...hydrationWarnings, ...paginationWarnings, ...snapshot.warnings] },
+    complete: conversations.complete && facts.complete && todos.complete,
+  };
+}
+
 async function hydrateConversation(
   client: BeeAdapterClient,
   summary: BeeConversation,
@@ -170,4 +226,61 @@ function buildSnapshot(
       todos: { nextCursor: todosPage.nextCursor },
     },
   };
+}
+
+interface PagedResult<T> {
+  readonly items: T[];
+  readonly nextCursor: string | null;
+  readonly complete: boolean;
+  readonly warnings: NormalizationWarning[];
+}
+
+async function fetchAllPages<T>(
+  fetch: (options: ListPageOptions) => Promise<Page<T>>,
+  pageSize: number,
+  maxPages: number,
+  maxItems: number,
+  field: string,
+): Promise<PagedResult<T>> {
+  const items: T[] = [];
+  const seenCursors = new Set<string>();
+  const warnings: NormalizationWarning[] = [];
+  let cursor: string | undefined;
+  for (let pageCount = 0; pageCount < maxPages; pageCount += 1) {
+    if (cursor && seenCursors.has(cursor)) {
+      warnings.push({ field, message: "Pagination stopped because Bee repeated a cursor; snapshot is partial." });
+      return { items, nextCursor: cursor, complete: false, warnings };
+    }
+    if (cursor) seenCursors.add(cursor);
+    const page = await fetch({ cursor, limit: pageSize });
+    if (items.length + page.items.length > maxItems) {
+      warnings.push({ field, message: "Pagination stopped at the configured item cap; snapshot is partial." });
+      return { items, nextCursor: cursor ?? null, complete: false, warnings };
+    }
+    items.push(...page.items);
+    if (page.nextCursor === null) return { items, nextCursor: null, complete: true, warnings };
+    if (seenCursors.has(page.nextCursor)) {
+      warnings.push({ field, message: "Pagination stopped because Bee returned a repeated next cursor; snapshot is partial." });
+      return { items, nextCursor: page.nextCursor, complete: false, warnings };
+    }
+    cursor = page.nextCursor;
+  }
+  warnings.push({ field, message: "Pagination stopped at the configured page cap; snapshot is partial." });
+  return { items, nextCursor: cursor ?? null, complete: false, warnings };
+}
+
+function dedupeRaw<T>(items: readonly T[]): T[] {
+  const seenIds = new Set<string>();
+  return items.filter((item) => {
+    const candidate = item as { id?: string | number | null };
+    const id = coerceId(candidate.id);
+    if (id === null) return true;
+    if (seenIds.has(id)) return false;
+    seenIds.add(id);
+    return true;
+  });
+}
+
+function positiveBound(value: number | undefined, fallback: number): number {
+  return value === undefined || !Number.isInteger(value) || value < 1 ? fallback : value;
 }
