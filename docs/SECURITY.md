@@ -20,6 +20,10 @@
                     |
                     | structured result; no I/O
                     v
+[ @cuenexa-loop/loop-store — local derived state only ]
+                    |
+                    | parameterized SQLite, local file only
+                    v
 [ @cuenexa-loop/cli — redacts, truncates, prints to your terminal ]
 ```
 
@@ -71,6 +75,14 @@ hydration").
 no subprocess, network, credential, storage, database, model-provider, or
 third-party API boundary.
 
+`loops:sync` is the sole Phase 2 command that writes local state. It uses
+Node's built-in `node:sqlite` rather than an ORM or native add-on, enables
+foreign keys, uses prepared statements for all data values, wraps
+reconciliation in a transaction, and applies best-effort owner-only file
+permissions. It never builds SQL from Bee content. An unreadable or newer
+database version produces a fixed action error and is never deleted
+automatically. `loops:reset -- --yes` is the explicit local-only erase path.
+
 ## No cloud dependency
 
 Phase 1 has no AWS, Amazon Bedrock, model-provider, or third-party API
@@ -90,6 +102,9 @@ detection/correlation logic uses only `zod` (already present) and
 Node/TypeScript built-ins. A smaller dependency tree is a smaller supply-chain surface
 for a project that, by its nature, ends up close to someone's personal
 data.
+
+Phase 2 adds no dependency: supported Node 22 includes the experimental
+but built-in `node:sqlite` API, which is verified in the supported runtime.
 
 `npm audit` is checked as part of every remediation pass and expected to
 report 0 vulnerabilities; when it doesn't, prefer the smallest version
