@@ -17,6 +17,7 @@ import type {
   ReconcileResult,
   UserStateMutationResult,
 } from "./types.js";
+import { parseIsoInstant } from "./time.js";
 
 const SCHEMA_VERSION = 2;
 const DEFAULT_RETENTION_DAYS = 30;
@@ -214,7 +215,8 @@ export class LoopStore {
     if (duration < 60_000 || duration > 365 * 24 * 60 * 60 * 1000) {
       throw new LoopStoreError("Snooze must be between 1 minute and 365 days in the future.");
     }
-    return this.mutateUserState(threadId, now, (current) => ({ ...current, snoozedUntil }));
+    const normalizedUntil = new Date(untilMs).toISOString();
+    return this.mutateUserState(threadId, now, (current) => ({ ...current, snoozedUntil: normalizedUntil }));
   }
 
   unsnoozeThread(threadId: string, updatedAt: string): UserStateMutationResult {
@@ -577,18 +579,11 @@ function userStateFromRow(row: UserStateRow): LoopThreadUserState {
 }
 
 function requireIsoInstant(value: string, label: string): number {
-  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) {
-    throw new LoopStoreError(`Invalid ${label}; expected an absolute ISO-8601 UTC timestamp.`);
-  }
-  const parsed = Date.parse(value);
-  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalizeIsoMilliseconds(value)) {
+  const parsed = parseIsoInstant(value);
+  if (parsed === null) {
     throw new LoopStoreError(`Invalid ${label}; expected a real absolute ISO-8601 UTC timestamp.`);
   }
   return parsed;
-}
-
-function normalizeIsoMilliseconds(value: string): string {
-  return value.includes(".") ? value : value.replace("Z", ".000Z");
 }
 
 function preparePrivatePath(path: string): void {

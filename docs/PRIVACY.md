@@ -39,6 +39,30 @@ Resolved local threads are retained for 30 days by default (bounded
 state is sent anywhere: there is no telemetry, cloud service, LLM, vector
 database, UI, Bee write-back, or realtime listener.
 
+## Phase 3 data categories
+
+**Ephemeral source content** includes Bee conversations, utterances,
+summaries, facts, todos, normalized LoopItems, evidence, and correlation
+anchors. It may be processed in memory during sync and is not persisted.
+
+**Persisted source-derived local state** is limited to stable thread IDs,
+hashed member identities, snapshot Loop IDs, source lifecycle, normalized
+due timestamps, structural timestamps/events, and the minimal derived title.
+
+**Persisted user preference state** is isolated in its own table and contains
+only acknowledgement time, snooze-until time, pin boolean, dismissal time,
+and preference update time.
+
+**Persisted notification ledger state** contains only a structural
+notification ID, thread ID, notification type, structural trigger key, and
+delivery timestamp. Notification body or title text is never stored there.
+
+Phase 3 does not persist raw transcripts, utterance text, Bee summaries, raw
+LoopItem text, evidence quotations, raw anchors, locations/coordinates,
+speaker or person metadata, Bee credentials, arbitrary notes, or notification
+body text. `loops:reset -- --yes` removes all CueNexa local tables by deleting
+the local database; it never deletes or changes Bee data.
+
 ## No real data in this repository
 
 Every fixture under `packages/bee-adapter/src/fixtures` and
@@ -143,6 +167,9 @@ for any command:
 npm start -- --include-content
 npm run loops:check -- --include-content
 npm run loops:correlate -- --include-content
+npm run loops:review -- --include-content
+npm run loops:notifications -- --include-content
+npm run loops:notify -- --include-content
 ```
 
 Even in this mode:
@@ -176,12 +203,9 @@ LLM calls. Phase 1B derives raw anchors transiently; anchors are not
 persisted, included in IDs or public links, or displayed. There is no
 telemetry or analytics code anywhere in this repository.
 
-## What a future phase must revisit
+## What a future phase must preserve
 
-Persistence, durable multi-snapshot tracking, multi-source ingestion, and
-AI/LLM-driven extraction remain out of scope after Phase 1. Phase 1B
-correlation is already local and stateless. If a later phase introduces a
-new trust boundary, it should:
+Any later native notification or UI boundary should:
 
 - Treat "no persistence by default" as the default to opt out of, not the
   other way around — an explicit, user-initiated action should be required

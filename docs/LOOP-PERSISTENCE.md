@@ -1,4 +1,4 @@
-# Local Loop persistence (Phase 2)
+# Local Loop persistence (Phases 2–3)
 
 Phase 2 gives a correlated Phase 1B Loop a persistent local `LoopThread`
 identity. A Phase 1B Loop ID is snapshot-local and changes when membership
@@ -27,6 +27,18 @@ deletes an incompatible/corrupt database automatically.
 Resolved state is retained for 30 days by default, configurable through the
 bounded `CUENEXA_LOOP_RETENTION_DAYS`; active state is never removed. Delete
 all local state with `npm run loops:reset -- --yes`. This never modifies Bee.
+
+Phase 3 migrates schema version 1 to version 2 in one transaction. The
+migration preserves every Phase 2 thread, member, snapshot mapping, and
+source event, then adds separate `loop_thread_user_state` and
+`loop_notification_deliveries` tables. Reopening the database reruns no
+destructive work. A migration failure rolls back and leaves the original file
+for explicit repair; a reset is never required for migration.
+
+Expired resolved threads are purged before identity reconciliation so history
+older than retention cannot be revived. Retained resolved threads remain
+eligible for the same strong overlap rules and can reopen normally. User state
+and delivery rows cascade only when their owning retained thread is deleted.
 
 `loops:today` is a local-only fixed-priority ranking: overdue open work, due
 within 24 hours, reopened/new activity/new member/new thread, due within

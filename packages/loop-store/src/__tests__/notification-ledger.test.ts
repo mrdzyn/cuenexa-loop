@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LoopStore } from "../store.js";
+import { LoopStore, resetLoopStore } from "../store.js";
 import { seedThread, TEST_NOW } from "./synthetic.js";
 
 describe("notification delivery ledger", () => {
@@ -33,5 +33,24 @@ describe("notification delivery ledger", () => {
     store.purgeResolved("2026-02-02T12:00:00.000Z");
     expect(store.listNotificationDeliveries()).toEqual([]);
     store.close();
+  });
+
+  it("reset erases Phase 3 user state and notification ledger with the local database", () => {
+    const directory = mkdtempSync(join(tmpdir(), "cuenexa-phase3-reset-"));
+    const path = join(directory, "state.sqlite");
+    const store = new LoopStore({ path });
+    const threadId = seedThread(store);
+    store.pinThread(threadId, TEST_NOW);
+    store.recordNotificationDeliveries([{
+      id: "notification_reset", threadId, type: "new_activity", triggerKey: "event:event_reset",
+    }], TEST_NOW);
+    store.close();
+    expect(resetLoopStore(path)).toBe(true);
+    const fresh = new LoopStore({ path });
+    expect(fresh.listThreads()).toEqual([]);
+    expect(fresh.listThreadUserStates()).toEqual([]);
+    expect(fresh.listNotificationDeliveries()).toEqual([]);
+    fresh.close();
+    rmSync(directory, { recursive: true, force: true });
   });
 });
