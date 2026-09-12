@@ -3,5 +3,8 @@ export * from "./confidence.js";
 export * from "./engine.js";
 export * from "./loop-types.js";
 export { createStableLoopId, createStableMemberIdentity } from "./loop-id.js";
+export { extractCorrelationAnchors, GENERIC_CORRELATION_TOKENS } from "./correlation/anchors.js";
+export { evaluatePairEligibility } from "./correlation/eligibility.js";
+export * from "./correlation/types.js";
 export type { DeadlineExtraction } from "./deadline.js";
 export { extractDeadline } from "./deadline.js";
