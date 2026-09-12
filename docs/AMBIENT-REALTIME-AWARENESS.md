@@ -315,6 +315,16 @@ Use a bounded deterministic refresh strategy such as:
 
 Exact intervals may be chosen during implementation, but they must be constants/configuration with deterministic tests and documented defaults.
 
+Implementation note for `@beeai/cli` 0.7.3: `streamJson().events[].data`
+contains only parsed `data:` JSON, so CueNexa identifies the documented raw
+utterance and conversation structures rather than relying on discarded SSE
+`event:`/`id:` fields. Realtime UUIDs and historical numeric IDs remain
+separate unless Bee supplies both in one conversation payload; that exact
+mapping is held only in a bounded foreground adapter bridge. Refresh hints
+received during the 60-second cooldown or an in-flight attempt set one
+coalesced pending request, which is attempted once when the shared limit
+allows. A failed attempt retains that one bounded pending request.
+
 ### Suggested checkpoint commit
 
 `Phase 4C: reconcile realtime awareness with processed history`
@@ -600,7 +610,13 @@ Test:
 - graceful SIGINT/SIGTERM abstraction cleanup;
 - realtime failure leaves persistent review available;
 - reconnect triggers at most the documented bounded refresh behavior;
+- gap/processed/idle hints received during cooldown are coalesced and later
+  attempted once rather than discarded;
+- UUID-only provisional awareness is retired by numeric processed history only
+  after an explicit provider-supplied UUID↔ID mapping;
 - no busy loop;
+- prolonged stream silence retains one event-pump read and one control timer,
+  without per-tick reactions or an event queue;
 - bounded memory;
 - old commands still work.
 

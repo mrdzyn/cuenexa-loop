@@ -19,3 +19,5 @@ export { deriveLoopTitle } from "./correlation/title.js";
 export * from "./correlation/types.js";
 export type { DeadlineExtraction } from "./deadline.js";
 export { extractDeadline } from "./deadline.js";
+export * from "./provisional-types.js";
+export * from "./provisional.js";

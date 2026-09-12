@@ -37,7 +37,8 @@ and can be erased with `npm run loops:reset -- --yes`.
 Resolved local threads are retained for 30 days by default (bounded
 `CUENEXA_LOOP_RETENTION_DAYS`); active threads are never purged. No local
 state is sent anywhere: there is no telemetry, cloud service, LLM, vector
-database, UI, Bee write-back, or realtime listener.
+database, UI, or Bee write-back. Phase 4's later realtime listener does not
+expand what Phase 2 persists.
 
 ## Phase 3 data categories
 
@@ -63,6 +64,29 @@ speaker or person metadata, Bee credentials, arbitrary notes, or notification
 body text. `loops:reset -- --yes` removes all CueNexa local tables by deleting
 the local database; it never deletes or changes Bee data.
 
+## Phase 4 ephemeral realtime data
+
+`loops:watch` receives documented Bee realtime events only in its foreground
+process. Raw event envelopes and transcript fragments remain in memory. The
+adapter retains at most 512 dedupe identities, and provisional awareness keeps
+at most 128 utterance groups with a ten-minute expiry. None of these records,
+their text, or their provisional signals are passed to `LoopStore`, `loop_events`,
+user preference tables, or the notification delivery ledger. The SQLite schema
+remains version 2 with no Phase 4 migration.
+
+Bee's realtime conversation UUID and historical numeric conversation ID are
+not treated as interchangeable. CueNexa retains at most 256 exact pairs in one
+foreground adapter process, solely when Bee supplies both values in the same
+documented conversation payload. It never derives that bridge from transcript content,
+titles, speakers, or timing, and it never persists the bridge. Without an
+explicit pair, a UUID-only provisional signal can only expire; processed
+history with a numeric ID does not retire it by guesswork.
+
+Only a separate, bounded call to the existing processed-history sync path may
+change persistent state. A realtime disconnect, correction, expiry, duplicate,
+or missing event never establishes completion, resolution, deletion, or any
+other authoritative fact.
+
 ## No real data in this repository
 
 Every fixture under `packages/bee-adapter/src/fixtures` and
@@ -72,7 +96,8 @@ Every fixture under `packages/bee-adapter/src/fixtures` and
 Fictional Avenue, Sampletown") — specifically so this public repository
 never ships with anyone's real conversations, facts, todos, or account
 information. `npm test` and CI run entirely against these fixtures; only
-`npm run bee:check`, `npm run loops:check`, and `npm run loops:correlate`, run manually by the
+`npm run bee:check`, `npm run loops:check`, `npm run loops:correlate`, and
+`npm run loops:watch`, run manually by the
 repository owner against their own already-authenticated session, ever
 touch real data, and their output is designed (see below) to contain
 none of it.
@@ -170,6 +195,7 @@ npm run loops:correlate -- --include-content
 npm run loops:review -- --include-content
 npm run loops:notifications -- --include-content
 npm run loops:notify -- --include-content
+npm run loops:watch -- --include-content
 ```
 
 Even in this mode:

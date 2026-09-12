@@ -4,6 +4,12 @@ import type { Page } from "@cuenexa-loop/contracts";
 import { classifyAuthError, classifyBeeError } from "./errors.js";
 import { extractPage } from "./pagination.js";
 import type { BeeConversation, BeeConversationDetailResponse, BeeFact, BeeTodo } from "./raw-types.js";
+import {
+  BeeConversationIdentityBridge,
+  subscribeToBeeRealtime,
+  type BeeRealtimeSubscribeOptions,
+  type BeeRealtimeSubscription,
+} from "./realtime.js";
 
 export interface BeeAdapterClientOptions {
   /** Passed through to `createBeeClient` (command path, environment, cwd, env overrides). */
@@ -41,6 +47,7 @@ export interface AuthenticationInfo {
  */
 export class BeeAdapterClient {
   private readonly client: BeeClient;
+  private readonly realtimeIdentities = new BeeConversationIdentityBridge();
 
   constructor(options: BeeAdapterClientOptions = {}) {
     this.client = options.client ?? createBeeClient(options.cliOptions);
@@ -97,6 +104,11 @@ export class BeeAdapterClient {
       "listing todos",
     );
     return extractPage<BeeTodo>(body, ["todos", "items", "data"], "listing todos");
+  }
+
+  /** Uses the public @beeai/cli/lib SSE surface; event parsing remains inside this adapter. */
+  subscribeRealtime(options: BeeRealtimeSubscribeOptions = {}): BeeRealtimeSubscription {
+    return subscribeToBeeRealtime(this.client, options, this.realtimeIdentities);
   }
 
   private async guarded<T>(fn: () => Promise<T>, action: string): Promise<T> {

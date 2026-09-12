@@ -53,6 +53,7 @@ wrapper around this library in the codebase:
 | `bee.api.conversations.get(id)`        | `getConversation(id)`            |
 | `bee.api.facts.list()`                 | `listFacts(options?)`            |
 | `bee.api.todos.list()`                 | `listTodos(options?)`             |
+| `bee.sse.streamJson({ types, signal })` | `subscribeRealtime(options?)`   |
 
 No Bee response shape leaks past this file: everything above it in
 `@cuenexa-loop/cli` only ever sees `@cuenexa-loop/contracts` types.
@@ -70,9 +71,49 @@ It follows Bee cursors with finite page/item caps, detects cursor repetition,
 de-duplicates page boundaries, and hydrates all fetched conversations. A cap
 or repeated cursor is reported as partial rather than silently treated as an
 authoritative history. Bee may take time to process mobile history; run a
-manual Bee processing action if needed, then run `loops:sync` again. CueNexa
-Loop deliberately does not ingest Bee realtime events or write anything back
-to Bee.
+manual Bee processing action if needed, then run `loops:sync` again.
+
+## Phase 4 supported realtime surface
+
+Phase 4 was implemented after inspecting the workspace-installed
+`@beeai/cli` **0.7.3** package. Its public `@beeai/cli/lib` export includes
+`bee.sse.streamJson({ types, signal })`, which returns an `AsyncIterable` at
+`.events`, an explicit `.close()` function, and the spawned Bee subprocess.
+The package README documents the same Node library call and the public
+`new-utterance`, `new-conversation`, and `update-conversation` payloads used
+by CueNexa. In 0.7.3, `streamJson().events[].data` is the parsed JSON from an
+SSE `data:` line; the library consumes the transport's `event:` and `id:`
+lines rather than returning them in that object. CueNexa therefore
+discriminates the documented raw `{ utterance, conversation_uuid }` and
+`{ conversation }` structures. It does not expect an invented top-level
+`type`, `event`, or provider-event-ID envelope. `connected` is not requested
+because its identity is not present in the parsed JSON surface.
+
+`BeeAdapterClient.subscribeRealtime()` is the only wrapper over that surface.
+It requests only those three structurally identifiable event types, normalizes
+them into provider-independent ephemeral contracts, bounds in-memory
+structural dedupe, and emits fixed content-free warnings for
+malformed/unsupported events. New and updated utterances share the same
+structural path because their transport event name is unavailable after
+parsing. The official surface does not document replay or resume guarantees,
+so CueNexa treats delivery as lossy/at-most-once and repairs gaps only by
+running the existing authoritative processed-history synchronization.
+Reconnect/backoff is orchestration policy in the foreground `loops:watch`
+process; it is not a private transport implementation.
+
+Bee's realtime `conversation_uuid` and processed-history numeric conversation
+`id` are distinct namespaces. An adapter-process-local bridge records at most
+256 exact UUID↔ID pairs, and only when one documented conversation payload
+contains both values. It never invents a mapping or matches content. A UUID-only
+provisional signal remains unconfirmed until such a pair is observed (then the
+exact in-memory signal identity may be upgraded) or until its TTL expires. The
+bridge and all UUIDs disappear when the foreground process ends and are never
+written to SQLite. Reconnect subscriptions in that same process reuse only
+these already proven pairs.
+
+Realtime subscription data is never passed directly to `LoopStore`, persisted,
+or written back to Bee. A disconnect is only a possible observation gap, not a
+conversation completion or Loop lifecycle event.
 
 ## Optional proxy fallback: none
 

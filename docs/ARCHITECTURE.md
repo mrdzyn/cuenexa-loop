@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 1 through Phase 3 pipeline
+## Phase 1 through Phase 4 pipeline
 
 ```text
 Apple Watch
@@ -45,21 +45,46 @@ a pure actionable-review policy, and a pure notification planner backed by a
 structural delivery ledger. User actions never update source-derived thread
 lifecycle or emit source events. Review and notification presenters consume
 structured models and share the existing redact-before-truncate helper.
-There is no daemon, realtime listener, OS notification adapter, or cloud
-delivery boundary.
+There is no daemon, OS notification adapter, or cloud delivery boundary.
+
+Phase 4 adds a separate foreground-only acceleration path:
+
+```text
+@beeai/cli 0.7.3 bee.sse.streamJson(...)
+    ↓
+raw data JSON: { utterance, conversation_uuid } | { conversation }
+    ↓
+BeeAdapterClient.subscribeRealtime (Bee shapes and UUID↔numeric-ID bridge end here)
+    ↓
+EphemeralRealtimeEvent (provider-independent, bounded memory)
+    ↓
+ProvisionalAwareness (no LoopItem/Loop/LoopThread identity)
+    ↓
+PROVISIONAL privacy-safe presentation
+    ↓ idle / processed hint / reconnect gap
+syncPersistentLoopsWithDetails
+    ↓
+existing complete authoritative Phase 1 → Phase 2 → Phase 3 path
+```
+
+The provisional path has no store dependency. Only the injected authoritative
+refresh calls `fetchCompleteDetectionSnapshot`, detection/correlation, and
+`LoopStore.reconcile`. Therefore realtime cannot create, resolve, reopen,
+delete, or mutate a persistent thread. Raw realtime transcript content never
+enters SQLite, and disconnect means only a possible observation gap.
 
 Everything after "Bee CLI authenticated environment" runs in a single
-short-lived Node process (`npm start`, `npm run loops:check`, or
-`npm run loops:correlate` in `packages/cli`), in memory, and exits.
-Nothing in this pipeline writes to
-disk, opens a database, or makes any network call itself — `@beeai/cli/lib`
-shells out to the already locally-authenticated `bee` executable, which
-is the only thing that talks to Bee's servers; Loop detection and
-correlation are pure, deterministic, local computations with no I/O.
+user-invoked Node process. Most commands are short-lived; `loops:watch` remains
+in the foreground until stopped and keeps provisional state only in memory.
+Only the established Phase 2/3 `LoopStore` boundary writes minimized derived
+state to local SQLite. `@beeai/cli/lib` shells out to the already
+locally-authenticated `bee` executable, which is the only thing that talks to
+Bee's servers; Loop detection, correlation, and provisional awareness are
+deterministic local computations with no I/O.
 
 ## Package boundaries
 
-The monorepo is split into four packages, each mapped to a reason
+The monorepo is split into five packages, each mapped to a reason
 something might need to change independently:
 
 - **`@cuenexa-loop/contracts`** owns the domain model: provider-independent
@@ -90,6 +115,16 @@ something might need to change independently:
 
   No Bee response shape leaks past this package — everything above it
   only ever sees `@cuenexa-loop/contracts` types.
+
+  Phase 4 wraps only the public `sse.streamJson({ types, signal })` API.
+  Version 0.7.3 exposes parsed `data:` JSON, not SSE `event:`/`id:` metadata,
+  so the adapter discriminates documented payload structures and requests only
+  `new-utterance`, `new-conversation`, and `update-conversation`. Realtime
+  fingerprints are bounded and memory-only; malformed supported events produce
+  fixed content-free warnings. A separate 256-entry adapter-process-local bridge
+  accepts only provider payloads containing both the realtime UUID and
+  processed-history numeric ID. It never correlates identity from content and
+  survives bounded reconnects but is never persisted.
 
 - **`@cuenexa-loop/loop-engine`** owns provider-independent Phase 1
   intelligence. Phase 1A's `detectLoopItems()` turns `LoopConversation[]`/
@@ -123,12 +158,37 @@ something might need to change independently:
   digests rather than run-local IDs or raw content. See
   [docs/LOOP-CORRELATION.md](LOOP-CORRELATION.md).
 
+  Phase 4's `ProvisionalAwareness` is deliberately separate from that pipeline.
+  It detects four possible signal types in one utterance/conversation at a time,
+  assigns no durable Loop identity, performs no cross-conversation correlation
+  or resolution inference, and retains at most 128 utterance groups for ten
+  minutes in the foreground process.
+
+- **`@cuenexa-loop/loop-store`** owns the existing schema-v2 structural local
+  threads, events, preferences, and notification delivery ledger. Phase 4
+  introduces no table or migration and never passes realtime records to it.
+
 - **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
   live acceptance checks (`npm run bee:check`, `npm run loops:check`, and
   `npm run loops:correlate` run this package's default mode for real). It
   has no business logic of its
   own — it composes the other packages and decides, based on
   `--include-content`, which presenter to use.
+
+  Phase 4 also owns `loops:watch`: a foreground runtime with a one-second idle
+  tick, 30-second activity idle threshold, 60-second minimum historical-refresh
+  interval, and bounded 1/2/5-second reconnect schedule. Merely displaying
+  authoritative notification eligibility never records a delivery. A user may
+  press `r` and Enter for an explicit refresh subject to the same rate limit.
+  A single pending bit coalesces processed, idle, manual, and gap requests that
+  arrive during cooldown or an in-flight refresh; the runtime performs one
+  deferred attempt when permitted. A failed attempt retains one coalesced retry
+  request while the bounded foreground runtime remains active.
+  Each subscription attempt runs exactly one sequential realtime event pump
+  and one independent periodic control task. The pump owns the sole outstanding
+  iterator read; ticks never attach reactions to it and no event queue is
+  created. Ending, failure, or cancellation aborts the attempt, closes its
+  subscription, and joins both tasks before any reconnect begins.
 
 ## Why normalization never throws
 
