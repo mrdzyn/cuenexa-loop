@@ -49,14 +49,35 @@ describe("LoopStore hardening", () => {
     store.close();
   });
 
-  it("does not merge an ambiguous strong overlap", () => {
+  it("reopens the same persistent thread after resolved membership expansion changes the snapshot Loop id", () => {
+    const store = new LoopStore({ path: ":memory:" });
+    const a = item("a"); const b = item("b"); const c = item("c");
+    const original = loop([a, b]);
+    const created = store.reconcile({ loops: [original], observedAt: DAY_ONE, complete: true });
+    const threadId = created.threads[0]!.id;
+
+    store.reconcile({ loops: [loop([a, b], "resolved")], observedAt: "2026-01-02T12:00:00.000Z", complete: true });
+    const expanded = loop([a, b, c], "open");
+    expect(expanded.id).not.toBe(original.id);
+
+    const reopened = store.reconcile({ loops: [expanded], observedAt: "2026-01-03T12:00:00.000Z", complete: true });
+    expect(reopened.threads[0]?.id).toBe(threadId);
+    expect(reopened.threads[0]?.memberIdentities).toHaveLength(3);
+    expect(reopened.events.map((event) => event.type)).toEqual([
+      "state_changed", "reopened", "member_added", "new_activity",
+    ]);
+    expect(store.listThreads()).toHaveLength(1);
+    store.close();
+  });
+
+  it("does not merge an ambiguous strong overlap between resolved candidates", () => {
     const store = new LoopStore({ path: ":memory:" });
     const a = item("a"); const b = item("b"); const c = item("c"); const d = item("d"); const e = item("e");
-    // Simulate a pre-existing local database with two plausible active candidates.
+    // Simulate a pre-existing local database with two plausible resolved candidates.
     // This is intentionally structural: only synthetic thread/member hashes enter it.
     const database = (store as unknown as { database: { prepare(sql: string): { run(...values: unknown[]): void } } }).database;
     for (const [threadId, members] of [["thread_one", [a, b, c]], ["thread_two", [a, b, d]]] as const) {
-      database.prepare("INSERT INTO loop_threads (thread_id, state, title, due_at, created_at, updated_at, last_observed_at, resolved_at) VALUES (?, 'open', NULL, NULL, ?, ?, ?, NULL)").run(threadId, DAY_ONE, DAY_ONE, DAY_ONE);
+      database.prepare("INSERT INTO loop_threads (thread_id, state, title, due_at, created_at, updated_at, last_observed_at, resolved_at) VALUES (?, 'resolved', NULL, NULL, ?, ?, ?, ?)").run(threadId, DAY_ONE, DAY_ONE, DAY_ONE, DAY_ONE);
       for (const member of members) {
         database.prepare("INSERT INTO loop_thread_members (thread_id, member_identity, first_observed_at, last_observed_at) VALUES (?, ?, ?, ?)").run(threadId, createStableMemberIdentity(member), DAY_ONE, DAY_ONE);
       }

@@ -32,4 +32,5 @@ all local state with `npm run loops:reset -- --yes`. This never modifies Bee.
 within 24 hours, reopened/new activity/new member/new thread, due within
 three days, stale open work, then long-waiting work. It is deterministic and
 does not change lifecycle. Default CLI output is structural; an explicit
-`--include-content` reveals only a truncated derived title.
+`--include-content` reveals only a derived title passed through the shared
+redact-first, truncate-second preview helper.

@@ -21,4 +21,24 @@ describe("persistent CLI output", () => {
   it("shows only a truncated derived title after explicit opt-in", () => {
     expect(renderToday([item], true)).toContain("Derived pricing deck");
   });
+
+  it("redacts email and phone content before truncating Phase 2 included titles", () => {
+    const sensitiveTitle = `Contact alice@example.com or +1 555 123 4567 about ${"the private follow-through details ".repeat(4)}`;
+    const sensitiveItem: AttentionItem = { ...item, thread: { ...item.thread, title: sensitiveTitle } };
+    const event: LoopChangeEvent = {
+      id: "event-sensitive", threadId: sensitiveItem.thread.id, type: "thread_created",
+      observedAt: sensitiveItem.thread.createdAt, details: {},
+    };
+
+    for (const output of [renderToday([sensitiveItem], true), renderHistory([event], [sensitiveItem.thread], true)]) {
+      expect(output).toContain("[redacted-email]");
+      expect(output).toContain("[redacted-number]");
+      expect(output).not.toContain("alice@example.com");
+      expect(output).not.toContain("+1 555 123 4567");
+      const renderedTitle = output.split(" — ")[1];
+      expect(renderedTitle).toBeDefined();
+      expect(renderedTitle!.length).toBeLessThanOrEqual(80);
+      expect(renderedTitle!.endsWith("…")).toBe(true);
+    }
+  });
 });

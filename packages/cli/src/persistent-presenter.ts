@@ -1,4 +1,5 @@
 import type { AttentionItem, LoopChangeEvent, LoopThread, ReconcileResult } from "@cuenexa-loop/loop-store";
+import { previewText } from "./presenter.js";
 
 /** Default output remains structural. Derived titles require deliberate opt-in. */
 export function renderSyncReport(result: ReconcileResult): string {
@@ -15,7 +16,7 @@ export function renderToday(items: readonly AttentionItem[], includeContent: boo
   const lines = ["CueNexa Loop attention.", `Needs attention: ${items.length}`];
   for (const item of items) {
     const structural = `- ${item.thread.id} [${item.thread.state}] ${item.reasonCodes.join(",")}`;
-    lines.push(includeContent ? `${structural}${item.thread.title ? ` — ${redactTitle(item.thread.title)}` : ""}` : structural);
+    lines.push(includeContent ? `${structural}${item.thread.title ? ` — ${previewText(item.thread.title, 80)}` : ""}` : structural);
   }
   return lines.join("\n");
 }
@@ -26,12 +27,7 @@ export function renderHistory(events: readonly LoopChangeEvent[], threads: reado
   for (const event of events) {
     const base = `- ${event.observedAt} ${event.threadId} ${event.type}`;
     const title = titles.get(event.threadId);
-    lines.push(includeContent && title ? `${base} — ${redactTitle(title)}` : base);
+    lines.push(includeContent && title ? `${base} — ${previewText(title, 80)}` : base);
   }
   return lines.join("\n");
-}
-
-function redactTitle(value: string): string {
-  const normalized = value.replace(/\s+/g, " ").trim();
-  return normalized.length > 80 ? `${normalized.slice(0, 77)}...` : normalized;
 }

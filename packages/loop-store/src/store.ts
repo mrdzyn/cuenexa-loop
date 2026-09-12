@@ -259,7 +259,7 @@ export class LoopStore {
 
   private matchByMembers(memberIdentities: readonly string[], warnings: string[], snapshotLoopId: string): string | null {
     const candidates = this.database
-      .prepare("SELECT thread_id FROM loop_threads WHERE state IN ('open', 'waiting') ORDER BY thread_id")
+      .prepare("SELECT thread_id FROM loop_threads WHERE state IN ('open', 'waiting', 'resolved') ORDER BY thread_id")
       .all() as unknown as Array<{ thread_id: string }>;
     const scored = candidates
       .map(({ thread_id }) => {
