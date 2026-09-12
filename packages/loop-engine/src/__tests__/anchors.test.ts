@@ -37,6 +37,16 @@ describe("extractCorrelationAnchors", () => {
     expect(anchors.specificPhrases).toEqual(expect.arrayContaining(["quarterly forecast", "vendor contract"]));
   });
 
+  it("never lets action, timing, or courtesy tokens strengthen an adjacent phrase", () => {
+    const sendAnchors = extractCorrelationAnchors(makeItem("Send the revised budget."));
+    const reviewAnchors = extractCorrelationAnchors(makeItem("Review the final proposal."));
+    const timingAnchors = extractCorrelationAnchors(makeItem("Please update the final report tomorrow."));
+
+    expect(sendAnchors.specificPhrases).not.toContain("send revised");
+    expect(reviewAnchors.specificPhrases).not.toContain("review final");
+    expect(timingAnchors.specificPhrases).not.toEqual(expect.arrayContaining(["please update", "update final", "report tomorrow"]));
+  });
+
   it("does not mutate Phase 1A item text or evidence", () => {
     const item = makeItem("Review the quarterly forecast.");
     const before = structuredClone(item);

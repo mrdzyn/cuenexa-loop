@@ -56,6 +56,28 @@ describe("evaluatePairEligibility", () => {
     expect(result.rejectionReasonCodes).toContain("generic_language_only");
   });
 
+  it.each([
+    ["Send the revised budget.", "Send the revised contract."],
+    ["Review the final proposal.", "Review the final budget."],
+  ])("rejects pairs that only share a generic action/modifier fragment", (firstText, secondText) => {
+    const result = evaluatePairEligibility(makeItem("a", "conv-a", firstText), makeItem("b", "conv-b", secondText));
+
+    expect(result.eligible).toBe(false);
+    expect(result.rejectionReasonCodes).toContain("generic_language_only");
+    expect(result.hasSharedSpecificAnchorPhrase).toBe(false);
+  });
+
+  it.each([
+    ["I'll send the pricing deck.", "Please review the pricing deck."],
+    ["I'll prepare the quarterly forecast.", "Please review the quarterly forecast."],
+    ["I'll send the vendor contract.", "Please review the vendor contract."],
+  ])("retains meaningful domain phrase eligibility for %s", (firstText, secondText) => {
+    const result = evaluatePairEligibility(makeItem("a", "conv-a", firstText), makeItem("b", "conv-b", secondText));
+
+    expect(result.eligible).toBe(true);
+    expect(result.hasSharedSpecificAnchorPhrase).toBe(true);
+  });
+
   it("rejects two items from the same conversation", () => {
     const result = evaluatePairEligibility(
       makeItem("a", "conv-a", "I'll send the pricing deck."),

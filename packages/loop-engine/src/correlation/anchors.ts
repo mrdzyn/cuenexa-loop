@@ -2,10 +2,11 @@ import { tokenize } from "../text-utils.js";
 import type { LoopItem } from "../types.js";
 
 /**
- * Common action, timing, and generic business-context words. They remain
- * explicit so Phase 1B favors false negatives over unsafe correlations.
+ * Action, timing, and courtesy words that can never strengthen an adjacent
+ * phrase. For example, "send revised" is an instruction fragment, not a
+ * subject anchor. Keep this explicit and conservative to favor precision.
  */
-export const GENERIC_CORRELATION_TOKENS = new Set([
+export const NON_STRENGTHENING_PHRASE_TOKENS = new Set([
   "send",
   "check",
   "review",
@@ -14,15 +15,9 @@ export const GENERIC_CORRELATION_TOKENS = new Set([
   "back",
   "in",
   "revisit",
-  "with",
-  "vendor",
-  "client",
-  "customer",
-  "report",
   "update",
   "tomorrow",
   "today",
-  "meeting",
   "email",
   "call",
   "next",
@@ -35,6 +30,25 @@ export const GENERIC_CORRELATION_TOKENS = new Set([
   "saturday",
   "sunday",
   "please",
+]);
+
+/**
+ * Generic business-context words cannot stand as single-token anchors, but
+ * may remain in a phrase with a specific subject/object ("vendor contract").
+ */
+export const GENERIC_BUSINESS_CONTEXT_TOKENS = new Set([
+  "with",
+  "vendor",
+  "client",
+  "customer",
+  "report",
+  "meeting",
+]);
+
+/** Common words excluded from single-token correlation anchors. */
+export const GENERIC_CORRELATION_TOKENS = new Set([
+  ...NON_STRENGTHENING_PHRASE_TOKENS,
+  ...GENERIC_BUSINESS_CONTEXT_TOKENS,
 ]);
 
 /** Transient anchor data for deterministic comparison; never stored in a Loop contract or identifier. */
@@ -82,8 +96,13 @@ function adjacentMeaningfulPhrases(text: string): string[] {
     if (!first || !second || first.length < 3 || second.length < 3) {
       continue;
     }
-    // Retain a phrase such as "vendor contract" when it includes a specific
-    // noun, while rejecting entirely generic pairs such as "send report".
+    // Action, timing, and courtesy fragments never become phrase anchors just
+    // because an adjacent modifier is specific (for example, "send revised").
+    if (NON_STRENGTHENING_PHRASE_TOKENS.has(first) || NON_STRENGTHENING_PHRASE_TOKENS.has(second)) {
+      continue;
+    }
+    // Generic business context may pair with a specific subject/object, such
+    // as "vendor contract", but cannot stand as a single-token anchor.
     if (isSpecificToken(first) || isSpecificToken(second)) {
       phrases.push(`${first} ${second}`);
     }
