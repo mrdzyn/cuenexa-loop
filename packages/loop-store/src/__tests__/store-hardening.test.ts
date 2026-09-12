@@ -70,6 +70,22 @@ describe("LoopStore hardening", () => {
     store.close();
   });
 
+  it("does not revive a resolved thread after its retention period expires", () => {
+    const store = new LoopStore({ path: ":memory:", retentionDays: 30 });
+    const a = item("a"); const b = item("b"); const c = item("c");
+    const original = store.reconcile({ loops: [loop([a, b], "resolved")], observedAt: DAY_ONE, complete: true });
+    const originalThreadId = original.threads[0]!.id;
+    const expanded = store.reconcile({
+      loops: [loop([a, b, c], "open")],
+      observedAt: "2026-02-02T12:00:00.000Z",
+      complete: true,
+    });
+    expect(expanded.threads[0]?.id).not.toBe(originalThreadId);
+    expect(store.getThread(originalThreadId)).toBeNull();
+    expect(store.listThreads()).toHaveLength(1);
+    store.close();
+  });
+
   it("does not merge an ambiguous strong overlap between resolved candidates", () => {
     const store = new LoopStore({ path: ":memory:" });
     const a = item("a"); const b = item("b"); const c = item("c"); const d = item("d"); const e = item("e");

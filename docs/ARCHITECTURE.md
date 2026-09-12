@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 1 and Phase 2 pipeline
+## Phase 1 through Phase 3 pipeline
 
 ```text
 Apple Watch
@@ -39,6 +39,14 @@ engine remains unchanged. `@cuenexa-loop/loop-store` then reconciles only
 the emitted Loop's derived structural fields into a persistent local thread;
 it never receives Bee records. `loops:today` ranks those local threads with
 fixed deterministic reason codes and makes no Bee request.
+
+Phase 3 keeps three additional layers separate: local user preference state,
+a pure actionable-review policy, and a pure notification planner backed by a
+structural delivery ledger. User actions never update source-derived thread
+lifecycle or emit source events. Review and notification presenters consume
+structured models and share the existing redact-before-truncate helper.
+There is no daemon, realtime listener, OS notification adapter, or cloud
+delivery boundary.
 
 Everything after "Bee CLI authenticated environment" runs in a single
 short-lived Node process (`npm start`, `npm run loops:check`, or

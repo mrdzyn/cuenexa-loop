@@ -39,6 +39,21 @@ export interface LoopChangeEvent {
   readonly details: Readonly<Record<string, string | null>>;
 }
 
+/** Local preference state; never changes the source-derived Loop lifecycle. */
+export interface LoopThreadUserState {
+  readonly threadId: string;
+  readonly acknowledgedAt: string | null;
+  readonly snoozedUntil: string | null;
+  readonly pinned: boolean;
+  readonly dismissedAt: string | null;
+  readonly updatedAt: string | null;
+}
+
+export interface UserStateMutationResult {
+  readonly changed: boolean;
+  readonly state: LoopThreadUserState;
+}
+
 export interface ReconcileInput {
   readonly loops: readonly import("@cuenexa-loop/loop-engine").Loop[];
   readonly observedAt: string;
@@ -68,4 +83,48 @@ export type AttentionReasonCode =
   | "newly_created"
   | "due_within_3d"
   | "stale_open"
-  | "waiting_too_long";
+  | "waiting_too_long"
+  | "pinned";
+
+export interface ReviewItem extends AttentionItem {
+  readonly userState: LoopThreadUserState;
+}
+
+export interface ReviewModel {
+  readonly generatedAt: string;
+  readonly dueNow: readonly ReviewItem[];
+  readonly needsAttention: readonly ReviewItem[];
+  readonly waiting: readonly ReviewItem[];
+  readonly snoozed: readonly ReviewItem[];
+  readonly recentlyResolved: readonly ReviewItem[];
+}
+
+export type LoopNotificationType = "overdue" | "due_within_24h" | "reopened" | "new_activity";
+
+export interface NotificationCandidate {
+  readonly id: string;
+  readonly thread: LoopThread;
+  readonly type: LoopNotificationType;
+  /** Content-free structural key: normalized due instant or source event id. */
+  readonly triggerKey: string;
+}
+
+export interface NotificationDelivery {
+  readonly id: string;
+  readonly threadId: string;
+  readonly type: LoopNotificationType;
+  readonly triggerKey: string;
+  readonly deliveredAt: string;
+}
+
+export interface NotificationDeliveryInput {
+  readonly id: string;
+  readonly threadId: string;
+  readonly type: LoopNotificationType;
+  readonly triggerKey: string;
+}
+
+export interface NotificationPlan {
+  readonly generatedAt: string;
+  readonly candidates: readonly NotificationCandidate[];
+}

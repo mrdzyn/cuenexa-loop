@@ -8,13 +8,15 @@ contracts, and deterministically identifies individual commitments,
 decisions, delegations, follow-ups, and open questions before correlating
 strongly related items across conversations into snapshot-local Loops.
 
-## Status: Phase 2 local follow-through
+## Status: Phase 3 proactive local follow-through
 
 This repository implements **Phase 0** (Bee connectivity, normalization,
 privacy-safe local verification), **Phase 1A** (deterministic LoopItem
 detection), and **Phase 1B** (deterministic, stateless cross-conversation
 Loop correlation within one hydrated Bee snapshot), plus **Phase 2** local
 SQLite-backed follow-through state, change history, and deterministic attention.
+**Phase 3** adds local user controls, an actionable review, and a deduplicated
+local notification planner/ledger. It adds no background or cloud delivery.
 
 ```text
 Apple Watch
@@ -72,9 +74,10 @@ This is an npm-workspaces monorepo:
   [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md).
 - [packages/cli](packages/cli) — the CLI entrypoint: wires the adapter and
   the detection engine to privacy-safe console presenters.
-- [packages/loop-store](packages/loop-store) — Phase 2's local-only SQLite
-  state, reconciliation events, retention, and deterministic attention. It
-  stores no Bee records or raw LoopItem evidence.
+- [packages/loop-store](packages/loop-store) — local-only SQLite state,
+  reconciliation events, retention, user preferences, deterministic attention,
+  review policy, and notification deduplication. It stores no Bee records or
+  raw LoopItem evidence.
 
 ## Prerequisites
 
@@ -141,12 +144,23 @@ npm run loops:check                    # structural counts only
 npm run loops:check -- --include-content  # redacted/truncated item text and evidence
 ```
 
-### Local follow-through (Phase 2)
+### Proactive local follow-through (Phase 3)
 
 ```bash
 npm run loops:sync                 # full bounded Bee history → local structural state
 npm run loops:today                # local deterministic attention, no Bee request
 npm run loops:today -- --include-content  # opt in to a short derived title
+npm run loops:review               # actionable structural review
+npm run loops:review -- --include-content # redacted derived titles
+npm run loops:ack -- <thread-id>
+npm run loops:snooze -- <thread-id> --for 2h
+npm run loops:unsnooze -- <thread-id>
+npm run loops:pin -- <thread-id>
+npm run loops:unpin -- <thread-id>
+npm run loops:dismiss -- <thread-id>
+npm run loops:restore -- <thread-id>
+npm run loops:notifications        # preview; does not record delivery
+npm run loops:notify               # local CLI render + dedupe record
 npm run loops:history              # local structural event history
 npm run loops:reset -- --yes       # erase only local CueNexa Loop state
 npm run loops:demo                 # sync, then local attention
@@ -155,9 +169,11 @@ npm run loops:demo                 # sync, then local attention
 The database defaults to `~/.cuenexa-loop/cuenexa-loop.sqlite`; set
 `CUENEXA_LOOP_DB_PATH` for another local location. It stores only derived
 Loop state, normalized due instants, hashed member identities, snapshot IDs,
-and structural events. It never stores Bee transcripts, summaries, raw item
+structural events, bounded user preferences, and structural notification
+delivery keys. It never stores Bee transcripts, summaries, raw item
 text, evidence, locations, people, credentials, or raw anchors. See
-[docs/LOOP-PERSISTENCE.md](docs/LOOP-PERSISTENCE.md).
+[docs/LOOP-PERSISTENCE.md](docs/LOOP-PERSISTENCE.md) and
+[docs/PROACTIVE-FOLLOW-THROUGH.md](docs/PROACTIVE-FOLLOW-THROUGH.md).
 
 ```text
 CueNexa Loop — Detection Check
