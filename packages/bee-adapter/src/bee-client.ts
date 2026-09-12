@@ -17,6 +17,19 @@ export interface ListPageOptions {
   limit?: number;
 }
 
+export interface AuthenticationInfo {
+  /**
+   * Bee's own account time zone (an IANA identifier, e.g.
+   * "America/Los_Angeles"), read from the authenticated profile response
+   * when present. Verified present on the real `bee me --json` response
+   * as of this writing, but the response shape is not formally published
+   * — null if the field is absent or not a non-empty string, so callers
+   * always have an explicit fallback path rather than trusting an assumed
+   * shape. See docs/BEE_INTEGRATION.md.
+   */
+  timeZone: string | null;
+}
+
 /**
  * Wraps the official `@beeai/cli/lib` client (`createBeeClient()`), which
  * itself runs the already-authenticated `bee` CLI as a subprocess in JSON
@@ -40,14 +53,18 @@ export class BeeAdapterClient {
    * failure (CLI missing, malformed output, not logged in) into a single
    * `false`, which makes it impossible to tell those cases apart. Calling
    * the underlying profile check (`auth.getProfile()`) directly lets the
-   * real failure reach `classifyAuthError` for proper classification.
+   * real failure reach `classifyAuthError` for proper classification, and
+   * — as a bonus from the same call — surfaces Bee's own account time
+   * zone for callers that need timezone-aware deadline resolution.
    */
-  async ensureAuthenticated(): Promise<void> {
+  async ensureAuthenticated(): Promise<AuthenticationInfo> {
+    let profile: unknown;
     try {
-      await this.client.auth.getProfile();
+      profile = await this.client.auth.getProfile();
     } catch (error) {
       throw classifyAuthError(error);
     }
+    return { timeZone: extractTimeZone(profile) };
   }
 
   async listConversations(options: ListPageOptions = {}): Promise<Page<BeeConversation>> {
@@ -89,6 +106,14 @@ export class BeeAdapterClient {
       throw classifyBeeError(error, action);
     }
   }
+}
+
+function extractTimeZone(profile: unknown): string | null {
+  if (profile && typeof profile === "object" && "timezone" in profile) {
+    const value = (profile as { timezone?: unknown }).timezone;
+    return typeof value === "string" && value.trim().length > 0 ? value : null;
+  }
+  return null;
 }
 
 /**

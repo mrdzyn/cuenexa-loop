@@ -1,6 +1,6 @@
 # Architecture
 
-## Phase 0 pipeline
+## Phase 0 + Phase 1A pipeline
 
 ```text
 Apple Watch
@@ -10,21 +10,29 @@ Bee (captures, transcribes, summarizes)
 Bee CLI authenticated environment (the `bee` executable on PATH)
     ↓  createBeeClient() — @beeai/cli/lib
 BeeAdapterClient (packages/bee-adapter/src/bee-client.ts)
+    ↓  fetchBeeSnapshot (list-only, bee:check) OR
+       fetchDetectionSnapshot (+ conversations.get(id) hydration, loops:check)
+       (packages/bee-adapter/src/service.ts)
     ↓  normalizeConversation / normalizeFact / normalizeTodo
        (packages/bee-adapter/src/normalize/*.ts)
 CueNexa Loop contracts — LoopConversation, LoopFact, LoopTodo
      (packages/contracts/src/*.ts)
+    ↓  detectLoopItems (packages/loop-engine/src/engine.ts)
+Structured Loop Items — LoopItem[]
+     (packages/loop-engine/src/types.ts)
     ↓  renderConnectivityReport / renderContentReport
-       (packages/cli/src/presenter.ts)
+       renderLoopConnectivityReport / renderLoopContentReport
+       (packages/cli/src/presenter.ts, packages/cli/src/loop-presenter.ts)
 Privacy-Safe CLI output
 ```
 
 Everything after "Bee CLI authenticated environment" runs in a single
-short-lived Node process (`npm start` in `packages/cli`), in memory, and
-exits. Nothing in this pipeline writes to disk, opens a database, or makes
-any network call itself — `@beeai/cli/lib` shells out to the already
-locally-authenticated `bee` executable, which is the only thing that
-talks to Bee's servers.
+short-lived Node process (`npm start`/`npm run loops:check` in
+`packages/cli`), in memory, and exits. Nothing in this pipeline writes to
+disk, opens a database, or makes any network call itself — `@beeai/cli/lib`
+shells out to the already locally-authenticated `bee` executable, which
+is the only thing that talks to Bee's servers; Loop detection itself is
+pure, deterministic, local computation with no I/O at all.
 
 ## Package boundaries
 
@@ -53,24 +61,41 @@ something might need to change independently:
     shape throws rather than becoming an indistinguishable "empty" page —
     see `docs/BEE_INTEGRATION.md#pagination`.
   - **normalization warnings** — collected, never swallowed, surfaced all
-    the way up to the CLI's warning count.
+    the way up to the CLI as a separate source-warning count. Detection
+    reports mark completeness `PARTIAL` whenever source warnings exist,
+    independently of detection-engine warnings.
 
   No Bee response shape leaks past this package — everything above it
   only ever sees `@cuenexa-loop/contracts` types.
 
-- **`@cuenexa-loop/loop-engine`** is reserved for Phase 1 Loop
-  intelligence (commitment/decision/delegation/follow-up/deadline/open-
-  question detection). In Phase 0 it contains only placeholder domain
-  types (`Commitment`, `Decision`, `Delegation`, `FollowUp`, `Deadline`,
-  `OpenQuestion`, `Loop`) and is not imported by any other package yet.
-  Establishing this boundary now means Phase 1 has an obvious place to
-  land without restructuring the adapter or CLI.
+- **`@cuenexa-loop/loop-engine`** is the Phase 1A deterministic Loop
+  detection engine: `detectLoopItems()` turns `LoopConversation[]`/
+  `LoopFact[]`/`LoopTodo[]` into structured `LoopItem[]` via a
+  candidate → dedup → completion-reconciliation → confidence-filter →
+  validated-`LoopItem` pipeline (`candidate-builder.ts` → `dedup.ts` →
+  `completion.ts` → `engine.ts`), plus a same-conversation-only
+  open-question resolution pass (`question-resolution.ts`). It depends
+  only on `@cuenexa-loop/contracts` — never on `@cuenexa-loop/bee-adapter`
+  or anything Bee-specific, so a future non-Bee data source could feed it
+  the same contracts and get the same detection for free. Its input
+  requires an explicit IANA `timeZone` (never assumes UTC — see
+  `docs/LOOP-DETECTION.md`). No LLM, no network call, no persistence. See
+  [docs/LOOP-DETECTION.md](LOOP-DETECTION.md) for the full detection
+  philosophy, confidence semantics, and deduplication/reconciliation
+  approach.
+
+  Deduplication is semantic-type-aware: decisions/open questions cannot
+  be absorbed into action Todos, while compatible action merges preserve
+  delegation ownership. Completion reconciliation likewise applies only
+  to completable action types (`commitment`, `follow_up`, `delegation`).
+  Question reconciliation can use later sentences in the same utterance
+  before its bounded same-conversation later-utterance scan.
 
 - **`@cuenexa-loop/cli`** owns orchestration, privacy-safe output, and the
-  live acceptance check (`npm run bee:check` runs this package's default
-  mode for real). It has no business logic of its own — it composes the
-  other packages and decides, based on `--include-content`, which
-  presenter to use.
+  live acceptance checks (`npm run bee:check` / `npm run loops:check` run
+  this package's default mode for real). It has no business logic of its
+  own — it composes the other packages and decides, based on
+  `--include-content`, which presenter to use.
 
 ## Why normalization never throws
 
@@ -107,21 +132,28 @@ record.
 
 ## Why there's no persistence layer
 
-Phase 0 is scoped to prove the pipeline above end-to-end without taking on
-the responsibility of storing anyone's conversational data. See
-[docs/PRIVACY.md](PRIVACY.md) for the reasoning; architecturally, the
-consequence is that there is no database package, no file-writing code
-path in the CLI, and no caching layer — `fetchBeeSnapshot` is called fresh
-on every run.
+Phase 0 and Phase 1A are scoped to prove the pipeline above end-to-end
+without taking on the responsibility of storing anyone's conversational
+data. See [docs/PRIVACY.md](PRIVACY.md) for the reasoning;
+architecturally, the consequence is that there is no database package, no
+file-writing code path in the CLI, and no caching layer — both
+`fetchBeeSnapshot` and `fetchDetectionSnapshot` are called fresh on every
+run, and `detectLoopItems` is a pure function with no memory of any
+previous run.
 
 ## Why default output and `--include-content` are separate code paths
 
-`packages/cli/src/presenter.ts` exports two independent render functions —
-`renderConnectivityReport` (default) and `renderContentReport`
-(`--include-content`) — rather than one function with an internal
-if/else. The default path is built to be structurally incapable of
-containing conversational content: it only ever reads `.length` off the
-snapshot's arrays and a fixed set of status strings, never a record's
-`.text`, `.summary`, or `.location`. See
-[docs/PRIVACY.md](PRIVACY.md#strict-privacy-by-default-output) for what
+`packages/cli/src/presenter.ts` (Bee snapshots) and
+`packages/cli/src/loop-presenter.ts` (Loop items) each export two
+independent render functions — a default connectivity/detection-count
+report and a `--include-content` report — rather than one function with
+an internal if/else. The default path is built to be structurally
+incapable of containing conversational content: it only ever reads
+`.length`/`.filter().length` off the result and a fixed set of status
+strings, never a record's `.text`, `.summary`, `.owner`, or `.evidence`.
+The detection presenter additionally reads only `snapshot.warnings.length`
+to report source health and derives `COMPLETE`/`PARTIAL` from that count;
+it never prints source-warning messages in either mode.
+See [docs/PRIVACY.md](PRIVACY.md#strict-privacy-by-default-output) and
+[docs/LOOP-DETECTION.md](LOOP-DETECTION.md#privacy-behavior) for what
 this guarantees and how it's tested.

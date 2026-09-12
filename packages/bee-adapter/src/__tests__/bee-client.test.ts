@@ -72,7 +72,23 @@ const genericCommandError = () => new Error("Bee CLI exited with code 1.");
 describe("BeeAdapterClient.ensureAuthenticated", () => {
   it("resolves when Bee reports an authenticated session", async () => {
     const client = new BeeAdapterClient({ client: makeFakeBeeClient() });
-    await expect(client.ensureAuthenticated()).resolves.toBeUndefined();
+    await expect(client.ensureAuthenticated()).resolves.toEqual({ timeZone: null });
+  });
+
+  it("surfaces Bee's account time zone when the profile response includes one", async () => {
+    const fake = makeFakeBeeClient();
+    fake.auth.getProfile = vi.fn().mockResolvedValue({ id: "profile_synthetic_001", timezone: "America/Los_Angeles" });
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.ensureAuthenticated()).resolves.toEqual({ timeZone: "America/Los_Angeles" });
+  });
+
+  it("returns a null time zone when the profile response has no usable timezone field", async () => {
+    const fake = makeFakeBeeClient();
+    fake.auth.getProfile = vi.fn().mockResolvedValue({ id: "profile_synthetic_001", timezone: "" });
+    const client = new BeeAdapterClient({ client: fake });
+
+    await expect(client.ensureAuthenticated()).resolves.toEqual({ timeZone: null });
   });
 
   it("throws BeeAuthenticationError when the profile check fails for an unspecific reason (not logged in)", async () => {

@@ -21,6 +21,7 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+      - run: npm audit
       # Deliberately not run here: `npm run bee:check`. It requires a real,
       # locally authenticated Bee CLI session and is documented as a manual
       # step for the repository owner (see docs/BEE_INTEGRATION.md) — CI

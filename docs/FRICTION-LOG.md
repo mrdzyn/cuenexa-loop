@@ -1,12 +1,58 @@
 # Friction log
 
 Structured notes on real friction encountered building and remediating
-CueNexa Loop Phase 0, for future contributors. Add a new entry rather than
+CueNexa Loop, for future contributors. Add a new entry rather than
 editing history when you hit something new; update severity/workaround if
 a later change resolves an earlier entry.
 
 No entry below includes a local username, computer name, filesystem path,
 account ID, authentication data, or private Bee data.
+
+---
+
+## Naive sentence splitting silently defeated email redaction
+
+**Date:** 2026-09-09 (Phase 1A)
+
+**Task:** Write CLI presenter tests for `loops:check --include-content`, covering the same "redact an email in evidence text" case already covered for Phase 0's `bee:check --include-content`.
+
+**Steps taken:**
+1. Wrote `splitSentences` in `packages/loop-engine/src/text-utils.ts` to break an utterance into per-sentence candidates on `.`/`!`/`?` boundaries, matching every character in that class regardless of context.
+2. Wrote a presenter test asserting that `"I'll send it to jordan@example.com tomorrow."` renders with `[redacted-email]` and never the raw address.
+
+**Expected result:** The test passes — the email gets redacted like any other evidence text.
+
+**Actual result:** It failed. The naive splitter treated the period inside `jordan@example.com` as a sentence boundary, splitting the utterance into `"I'll send it to jordan@example"` and `"com tomorrow."` *before* the candidate ever reached the presenter's redaction step. The email-address regex (which requires a `.`+TLD suffix) no longer matched the truncated fragment, so redaction silently did nothing — the broken half of the address (`jordan@example`) was printed as normal item text, not caught as a redaction failure by anything.
+
+**Effect:** A real, exploitable privacy gap in `--include-content` mode: any email address (or similarly `.`-containing token) appearing mid-utterance could leak past redaction depending on exactly where the sentence-splitter cut it.
+
+**Severity:** High — this is exactly the kind of silent, plausible-looking-but-wrong failure the project's "never let a fallback look identical to a correct result" principle (see the Phase 0 audit-remediation entry below) exists to catch, and it was caught by writing the test *before* assuming the implementation was correct, not by inspection.
+
+**Workaround/fix:** Rewrote `splitSentences` to only treat a `.`/`!`/`?` run as a boundary when followed by whitespace or end-of-string — a period immediately followed by a non-space character (as in a domain name) is never a boundary. Added a direct regression test in `__tests__/text-utils.test.ts` plus the presenter-level test that caught it in the first place.
+
+**Actionable suggestion:** Any text-splitting step that runs *before* a redaction step must be tested with exactly the kind of content redaction cares about (emails, phone numbers) crossing the split boundary — testing redaction and splitting in isolation from each other would have missed this.
+
+---
+
+## Dedup threshold merged different actions that shared a boilerplate phrase
+
+**Date:** 2026-09-09 (Phase 1A)
+
+**Task:** Write a CLI presenter test with three different commitments in one conversation ("I'll send the estimate/invoice/contract tomorrow.") to verify `LOOP_MAX_ITEMS` capping in `--include-content` mode.
+
+**Steps taken:** Wrote the test expecting 3 separate commitment items, capped to 1 shown.
+
+**Expected result:** 3 distinct `LoopItem`s, one shown, "... and 2 more".
+
+**Actual result:** Only 1 item total — `deduplicateCandidates` (similarity threshold 0.5, Jaccard over stopword-filtered tokens) merged all three into one. Short commitment sentences share a lot of boilerplate ("I'll", "send", "the", "tomorrow"); the one word that actually distinguishes them (estimate/invoice/contract) is a minority of the token set, so token-overlap similarity between "send the estimate tomorrow" and "send the invoice tomorrow" measured ~0.6 — above the 0.5 merge threshold, incorrectly treating three different tasks as one restated task.
+
+**Effect:** The dedup logic, tuned only against the one worked example in the Phase 1A brief (a conversation commitment matching its own Bee Todo, which measures ~0.75 similarity), over-merged in a case that worked example never exercised.
+
+**Severity:** Medium — silently drops real, distinct commitments rather than corrupting data, but directly undermines the "precision over recall" principle by making three real items look like one.
+
+**Workaround/fix:** Raised `SIMILARITY_MERGE_THRESHOLD` from 0.5 to 0.7 — comfortably below the true-positive case (~0.75) and comfortably above the false-positive case (~0.6). Added both cases as permanent regression tests in `__tests__/dedup.test.ts` rather than trusting the threshold by feel.
+
+**Actionable suggestion:** When tuning a similarity/overlap threshold off a single worked example, deliberately construct at least one "should NOT match" case with the same surface-level shape (same sentence template, different subject) before trusting the threshold — the single positive example alone doesn't tell you where the threshold needs to sit relative to negatives.
 
 ---
 

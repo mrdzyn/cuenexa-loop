@@ -1,4 +1,4 @@
-import type { LoopConversation, LoopFact, LoopTodo, NormalizationWarning } from "@cuenexa-loop/contracts";
+import type { LoopConversation, LoopFact, LoopTodo } from "@cuenexa-loop/contracts";
 import type { BeeSnapshot } from "@cuenexa-loop/bee-adapter";
 import type { LoopConfig } from "./config.js";
 
@@ -87,7 +87,8 @@ function renderTodoLine(todo: LoopTodo): string {
   return `  - ${box} [${todo.id}] "${text}"${due}`;
 }
 
-function renderSection<T>(title: string, items: T[], render: (item: T) => string, limit: number): string {
+/** Shared with loop-presenter.ts, which renders LoopItem sections the same way. */
+export function renderSection<T>(title: string, items: T[], render: (item: T) => string, limit: number): string {
   const lines = [`${title} (${Math.min(items.length, limit)} of ${items.length} shown)`];
   if (items.length === 0) {
     lines.push("  (none)");
@@ -100,11 +101,18 @@ function renderSection<T>(title: string, items: T[], render: (item: T) => string
   return lines.join("\n");
 }
 
-function renderWarnings(warnings: NormalizationWarning[]): string {
+/** A warning shape both NormalizationWarning and loop-engine's DetectionWarning satisfy. */
+interface FieldWarning {
+  field: string;
+  message: string;
+}
+
+/** Shared with loop-presenter.ts (used there for DetectionWarning, same shape). */
+export function renderWarnings(warnings: FieldWarning[], label = "Normalization warnings"): string {
   if (warnings.length === 0) {
     return "";
   }
-  const lines = [`Normalization warnings (${warnings.length}):`];
+  const lines = [`${label} (${warnings.length}):`];
   for (const warning of warnings.slice(0, 10)) {
     lines.push(`  - [${warning.field}] ${warning.message}`);
   }
