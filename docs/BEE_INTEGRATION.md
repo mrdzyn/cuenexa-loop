@@ -53,6 +53,7 @@ wrapper around this library in the codebase:
 | `bee.api.conversations.get(id)`        | `getConversation(id)`            |
 | `bee.api.facts.list()`                 | `listFacts(options?)`            |
 | `bee.api.todos.list()`                 | `listTodos(options?)`             |
+| `bee.sse.streamJson({ types, signal })` | `subscribeRealtime(options?)`   |
 
 No Bee response shape leaks past this file: everything above it in
 `@cuenexa-loop/cli` only ever sees `@cuenexa-loop/contracts` types.

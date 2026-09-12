@@ -8,7 +8,7 @@ contracts, and deterministically identifies individual commitments,
 decisions, delegations, follow-ups, and open questions before correlating
 strongly related items across conversations into snapshot-local Loops.
 
-## Status: Phase 3 proactive local follow-through
+## Status: Phase 4 ambient realtime awareness
 
 This repository implements **Phase 0** (Bee connectivity, normalization,
 privacy-safe local verification), **Phase 1A** (deterministic LoopItem
@@ -16,7 +16,10 @@ detection), and **Phase 1B** (deterministic, stateless cross-conversation
 Loop correlation within one hydrated Bee snapshot), plus **Phase 2** local
 SQLite-backed follow-through state, change history, and deterministic attention.
 **Phase 3** adds local user controls, an actionable review, and a deduplicated
-local notification planner/ledger. It adds no background or cloud delivery.
+local notification planner/ledger. **Phase 4** adds a foreground, ephemeral
+Bee realtime awareness layer that can show conservative provisional signals
+while preserving processed history as the only authority for persistent state.
+It adds no background daemon or cloud delivery.
 
 ```text
 Apple Watch
@@ -39,9 +42,13 @@ Anchors → Eligibility → Deterministic Score (0.90 threshold)
     ↓
 Complete-Link Grouping → Timeline / Lifecycle / Title
     ↓
-Structured Loops
+Structured Loops → Persistent Local Follow-Through (processed history only)
+
+Bee realtime stream (foreground loops:watch only)
     ↓
-Privacy-Safe CLI
+Normalized Ephemeral Events → PROVISIONAL presentation
+    ↓
+Bounded authoritative refresh rejoins the processed-history path above
 ```
 
 Phase 1 is a **deterministic, local-only heuristic engine — not an LLM**.
@@ -59,19 +66,21 @@ does not do.
 This is an npm-workspaces monorepo:
 
 - [packages/contracts](packages/contracts) — CueNexa Loop-owned domain
-  types (`LoopConversation`, `LoopFact`, `LoopTodo`, `Page<T>`),
+  types (`LoopConversation`, `LoopFact`, `LoopTodo`, `Page<T>`, and clearly
+  named ephemeral realtime events),
   independent of Bee's wire format, plus their [Zod](https://zod.dev)
   schemas.
 - [packages/bee-adapter](packages/bee-adapter) — wraps the official
   `@beeai/cli/lib` client and normalizes Bee's responses onto the
-  contracts above, defensively and without throwing on missing or
-  reshaped fields. The only package that knows Bee's response shapes.
+  contracts above, including its supported SSE realtime stream. The only
+  package that knows Bee's response or event shapes.
 - [packages/loop-engine](packages/loop-engine) — Phase 1A detection plus
   Phase 1B deterministic anchors, eligibility, scoring, complete-link
   grouping, timeline, lifecycle, and title derivation. It has no Bee-
   specific dependency, LLM, network access, or persistence. See
   [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) and
-  [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md).
+  [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md), plus Phase 4's
+  distinct, memory-only provisional awareness engine.
 - [packages/cli](packages/cli) — the CLI entrypoint: wires the adapter and
   the detection engine to privacy-safe console presenters.
 - [packages/loop-store](packages/loop-store) — local-only SQLite state,
@@ -164,6 +173,9 @@ npm run loops:notify               # local CLI render + dedupe record
 npm run loops:history              # local structural event history
 npm run loops:reset -- --yes       # erase only local CueNexa Loop state
 npm run loops:demo                 # sync, then local attention
+npm run loops:watch                # foreground provisional + authoritative watch
+npm run loops:watch -- --include-content # redacted/truncated ephemeral preview
+npm run loops:realtime-demo        # deterministic synthetic Phase 4 handoff demo
 ```
 
 The database defaults to `~/.cuenexa-loop/cuenexa-loop.sqlite`; set
@@ -174,6 +186,16 @@ delivery keys. It never stores Bee transcripts, summaries, raw item
 text, evidence, locations, people, credentials, or raw anchors. See
 [docs/LOOP-PERSISTENCE.md](docs/LOOP-PERSISTENCE.md) and
 [docs/PROACTIVE-FOLLOW-THROUGH.md](docs/PROACTIVE-FOLLOW-THROUGH.md).
+
+`loops:watch` always performs an authoritative sync/review before subscribing
+to Bee realtime events. Realtime observations are labeled `PROVISIONAL`, live
+only in bounded process memory, and never create or mutate SQLite rows. Idle,
+processed-conversation, and realtime-gap hints can request the existing full
+historical path, rate-limited to one attempt per 60 seconds. The foreground
+runtime retries realtime at 1, 2, and 5 seconds, then stops; press `r` followed
+by Enter for an explicit rate-limited refresh. Existing commands remain
+independent. See
+[docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md).
 
 ```text
 CueNexa Loop — Detection Check
@@ -244,6 +266,7 @@ npm run build        # compile all packages to dist/
 npm run bee:check    # live Bee connectivity check — see below
 npm run loops:check   # live Loop detection check — see below
 npm run loops:correlate # live snapshot-local Loop correlation check
+npm run loops:watch     # live foreground ambient awareness (manual only)
 ```
 
 Tests never touch a real Bee account: every fixture under
@@ -252,7 +275,8 @@ is synthetic, invented for this repository.
 
 ### Live acceptance tests
 
-`npm run bee:check`, `npm run loops:check`, and `npm run loops:correlate`
+`npm run bee:check`, `npm run loops:check`, `npm run loops:correlate`, and
+`npm run loops:watch`
 build the project and run against your already-authenticated Bee session, in
 each command's default (non-`--include-content`) mode — i.e. they *are*
 the connectivity-check / detection-check outputs shown above, run for
@@ -268,6 +292,7 @@ real. Run them yourself after `bee login`; CI never runs any of them (see
 - [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md) — how the Bee adapter uses `@beeai/cli/lib`.
 - [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) — what Loop items are, detection philosophy, confidence, dedup, and limitations.
 - [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md) — deterministic scoring, complete-link grouping, lifecycle, timeline, titles, and correlation privacy.
+- [docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md) — Phase 4's authoritative/provisional boundary and acceptance criteria.
 - [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) — structured friction notes for future contributors.
 
 ## License

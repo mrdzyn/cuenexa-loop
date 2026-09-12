@@ -20,6 +20,8 @@ export interface WatchRuntimeDependencies {
   readonly output: (text: string) => void;
   readonly now?: () => string;
   readonly wait?: (milliseconds: number, signal: AbortSignal) => Promise<void>;
+  /** Consumes a foreground user request (for example `r` + Enter). */
+  readonly consumeManualRefreshRequest?: () => boolean;
   readonly includeContent?: boolean;
 }
 
@@ -37,15 +39,18 @@ export async function runAmbientWatch(
   const now = dependencies.now ?? (() => new Date().toISOString());
   const wait = dependencies.wait ?? waitFor;
   const includeContent = dependencies.includeContent ?? false;
-  const initial = await dependencies.initialSync(now());
-  const coordinator = new RealtimeHandoffCoordinator(new ProvisionalAwareness(), dependencies.authoritativeRefresh);
+  const initialAt = now();
+  const initial = await dependencies.initialSync(initialAt);
+  const coordinator = new RealtimeHandoffCoordinator(
+    new ProvisionalAwareness(), dependencies.authoritativeRefresh, initialAt,
+  );
   let subscriptionsOpened = 0;
   let reconnectsAttempted = 0;
   let authoritativeRefreshes = 0;
 
   dependencies.output(renderSyncReport(initial.reconcile));
   dependencies.output(renderReview(dependencies.loadReview(now()), includeContent));
-  dependencies.output("Authoritative CueNexa state is ready. Connecting realtime awareness…");
+  dependencies.output("Authoritative CueNexa state is ready. Connecting realtime awareness… (press r then Enter to refresh)");
 
   for (let attempt = 0; !signal.aborted && attempt <= WATCH_RECONNECT_BACKOFF_MS.length; attempt += 1) {
     let subscription: BeeRealtimeSubscription | null = null;
@@ -71,10 +76,10 @@ export async function runAmbientWatch(
         if (outcome.kind === "tick") {
           const current = now();
           coordinator.expire(current);
-          if (coordinator.idleRefreshDue(current)) {
-            const refreshed = await coordinator.refresh("idle", current);
-            if (refreshed.attempted) authoritativeRefreshes += 1;
-            renderAuthoritativeUpdate(dependencies, refreshed.result, includeContent, current);
+          if (dependencies.consumeManualRefreshRequest?.()) {
+            authoritativeRefreshes += await refreshAndRender(coordinator, "manual", dependencies, includeContent, current);
+          } else if (coordinator.idleRefreshDue(current)) {
+            authoritativeRefreshes += await refreshAndRender(coordinator, "idle", dependencies, includeContent, current);
           }
           continue;
         }
@@ -86,9 +91,10 @@ export async function runAmbientWatch(
           dependencies.output(renderProvisionalSignal(provisional, includeContent));
         }
         if (event.kind === "conversation_state" && event.state === "processed") {
-          const refreshed = await coordinator.refresh("conversation_processed", now());
-          if (refreshed.attempted) authoritativeRefreshes += 1;
-          renderAuthoritativeUpdate(dependencies, refreshed.result, includeContent, now());
+          const current = now();
+          authoritativeRefreshes += await refreshAndRender(
+            coordinator, "conversation_processed", dependencies, includeContent, current,
+          );
         }
       }
     } catch {
@@ -99,17 +105,32 @@ export async function runAmbientWatch(
 
     if (signal.aborted || attempt === WATCH_RECONNECT_BACKOFF_MS.length) break;
 
-    const gapRefresh = await coordinator.refresh("realtime_gap", now()).catch(() => null);
-    if (gapRefresh?.attempted) {
-      authoritativeRefreshes += 1;
-      renderAuthoritativeUpdate(dependencies, gapRefresh.result, includeContent, now());
-    }
+    authoritativeRefreshes += await refreshAndRender(
+      coordinator, "realtime_gap", dependencies, includeContent, now(),
+    );
     dependencies.output("Realtime unavailable — authoritative CueNexa state remains available.");
     reconnectsAttempted += 1;
     await wait(WATCH_RECONNECT_BACKOFF_MS[attempt]!, signal);
   }
 
   return { subscriptionsOpened, reconnectsAttempted, authoritativeRefreshes };
+}
+
+async function refreshAndRender(
+  coordinator: RealtimeHandoffCoordinator,
+  trigger: Parameters<RealtimeHandoffCoordinator["refresh"]>[0],
+  dependencies: WatchRuntimeDependencies,
+  includeContent: boolean,
+  now: string,
+): Promise<number> {
+  try {
+    const refreshed = await coordinator.refresh(trigger, now);
+    renderAuthoritativeUpdate(dependencies, refreshed.result, includeContent, now);
+    return refreshed.attempted ? 1 : 0;
+  } catch {
+    dependencies.output("Authoritative refresh unavailable — existing persistent state remains available.");
+    return 0;
+  }
 }
 
 function renderAuthoritativeUpdate(

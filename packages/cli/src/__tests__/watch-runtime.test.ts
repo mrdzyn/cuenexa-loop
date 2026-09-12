@@ -65,6 +65,7 @@ describe("ambient watch runtime", () => {
       authoritativeRefresh: refresh,
       subscribe: () => stream([]),
       wait: async () => undefined,
+      now: clockAfterInitialSync(),
     }, new AbortController().signal);
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(result.authoritativeRefreshes).toBe(1);
@@ -82,8 +83,52 @@ describe("ambient watch runtime", () => {
       subscribe: () => stream([{ kind: "conversation_state", id: "state_1", provider: "bee", providerEventId: null,
         sessionId: null, conversationId: "conversation_synthetic", observedAt: NOW, state: "processed" }]),
       output: (text) => { if (text.startsWith("AUTHORITATIVE")) controller.abort(); },
+      now: clockAfterInitialSync(),
     }, controller.signal);
     expect(deliveryWrite).not.toHaveBeenCalled();
+  });
+
+  it("keeps the realtime subscription alive when an authoritative refresh fails", async () => {
+    const controller = new AbortController();
+    const close = vi.fn();
+    const output: string[] = [];
+    const events = (async function* () {
+      yield { kind: "conversation_state", id: "state_1", provider: "bee", providerEventId: null,
+        sessionId: null, conversationId: "conversation_synthetic", observedAt: NOW, state: "processed" } as const;
+      await new Promise<void>(() => undefined);
+    })();
+    const result = await runAmbientWatch({
+      ...dependencies(output),
+      authoritativeRefresh: async () => { throw new Error("synthetic private history error"); },
+      subscribe: () => ({ events, close }),
+      output: (text) => {
+        output.push(text);
+        if (text.startsWith("Authoritative refresh unavailable")) controller.abort();
+      },
+      now: clockAfterInitialSync(),
+    }, controller.signal);
+    expect(result.subscriptionsOpened).toBe(1);
+    expect(result.reconnectsAttempted).toBe(0);
+    expect(close).toHaveBeenCalledOnce();
+    expect(output.join("\n")).not.toContain("synthetic private history error");
+  });
+
+  it("accepts an explicit foreground manual refresh without bypassing the shared limit", async () => {
+    const controller = new AbortController();
+    let requested = true;
+    const refresh = vi.fn(async () => syncResult({
+      events: [{ id: "event_manual", threadId: "thread_synthetic", type: "new_activity", observedAt: NOW, details: {} }],
+    }));
+    await runAmbientWatch({
+      ...dependencies([]),
+      authoritativeRefresh: refresh,
+      subscribe: () => ({ events: neverEnding(), close: vi.fn() }),
+      consumeManualRefreshRequest: () => { const result = requested; requested = false; return result; },
+      wait: async () => undefined,
+      now: clockAfterInitialSync(),
+      output: (text) => { if (text.startsWith("AUTHORITATIVE")) controller.abort(); },
+    }, controller.signal);
+    expect(refresh).toHaveBeenCalledOnce();
   });
 });
 
@@ -122,4 +167,9 @@ function utterance(): EphemeralRealtimeEvent {
     conversationId: "conversation_synthetic", utteranceId: "utterance_synthetic", observedAt: NOW,
     spokenAt: null, text: "I will send the synthetic pricing deck.", final: true,
   };
+}
+
+function clockAfterInitialSync(): () => string {
+  let calls = 0;
+  return () => calls++ === 0 ? NOW : "2026-09-12T08:02:00.000Z";
 }

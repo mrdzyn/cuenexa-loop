@@ -146,8 +146,8 @@ function baseEvent(
   observedAt: string,
   identityParts: readonly unknown[],
 ) {
-  const structuralId = providerEventId ?? createHash("sha256")
-    .update(JSON.stringify(identityParts))
+  const structuralId = createHash("sha256")
+    .update(JSON.stringify(providerEventId ? ["provider_event_id", providerEventId] : identityParts))
     .digest("hex")
     .slice(0, 32);
   return {
@@ -194,6 +194,10 @@ function booleanValue(value: unknown): boolean | null {
 
 function isoInstant(value: unknown): string | null {
   if (typeof value !== "string" && typeof value !== "number") return null;
-  const date = new Date(value);
+  const numeric = typeof value === "number" ? value : /^\d+(?:\.\d+)?$/.test(value.trim()) ? Number(value) : null;
+  const normalized = numeric !== null && Number.isFinite(numeric) && Math.abs(numeric) < 1_000_000_000_000
+    ? numeric * 1_000
+    : value;
+  const date = new Date(normalized);
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }

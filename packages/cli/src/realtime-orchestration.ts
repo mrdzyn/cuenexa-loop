@@ -34,7 +34,11 @@ export class RealtimeHandoffCoordinator {
   constructor(
     private readonly awareness: ProvisionalAwareness,
     private readonly authoritativeRefresh: AuthoritativeRefresh,
-  ) {}
+    lastAuthoritativeRefreshAt: string | null = null,
+  ) {
+    const parsed = lastAuthoritativeRefreshAt === null ? NaN : Date.parse(lastAuthoritativeRefreshAt);
+    this.lastRefreshAttemptMs = Number.isFinite(parsed) ? parsed : null;
+  }
 
   observe(event: EphemeralRealtimeEvent, timeZone: string): ProvisionalIngestResult {
     if (event.kind !== "utterance") return { emitted: [], active: this.awareness.list() };

@@ -123,6 +123,14 @@ describe("authoritative realtime handoff", () => {
     expect(store.listNotificationDeliveries()).toEqual([]);
     store.close();
   });
+
+  it("counts a seeded initial authoritative sync toward the refresh interval", async () => {
+    const refresh = vi.fn(async () => emptySync());
+    const coordinator = new RealtimeHandoffCoordinator(new ProvisionalAwareness(), refresh, NOW);
+    expect((await coordinator.refresh("conversation_processed", "2026-09-12T08:00:30.000Z")).attempted).toBe(false);
+    expect((await coordinator.refresh("conversation_processed", "2026-09-12T08:01:00.000Z")).attempted).toBe(true);
+    expect(refresh).toHaveBeenCalledOnce();
+  });
 });
 
 function coordinatorWith(

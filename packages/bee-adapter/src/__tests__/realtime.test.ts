@@ -19,7 +19,7 @@ describe("Bee realtime normalization", () => {
 
     expect(result).toEqual({ event: {
       kind: "utterance",
-      id: "bee_rt_event_synthetic_001",
+      id: expect.stringMatching(/^bee_rt_[a-f0-9]{32}$/),
       provider: "bee",
       providerEventId: "event_synthetic_001",
       sessionId: null,

@@ -12,7 +12,7 @@
                     |
                     | subprocess spawn + stdout JSON parse, via @beeai/cli/lib
                     v
-[ @cuenexa-loop/bee-adapter — BeeAdapterClient ]
+[ @cuenexa-loop/bee-adapter — BeeAdapterClient + supported realtime SSE ]
                     |
                     | in-memory only
                     v
@@ -60,9 +60,10 @@ and truncates before printing anything.
 ## No production network service
 
 Nothing in this codebase binds a port, opens a socket for inbound
-connections, or runs as a long-lived service. `@cuenexa-loop/cli` is a
-short-lived process that runs once and exits. (An earlier version of this
-project ran a local HTTP proxy client; that integration has been removed
+connections, or runs as a background service. Most CLI commands are
+short-lived; Phase 4's `loops:watch` is a user-invoked foreground process that
+ends on SIGINT/SIGTERM and closes its subscription/store. (An earlier version
+of this project ran a local HTTP proxy client; that integration has been removed
 entirely — see `docs/BEE_INTEGRATION.md`.) `loops:check` does spawn more
 `bee` subprocesses than `bee:check` — one per conversation being
 hydrated, via `conversations.get(id)` — but bounded to a small, fixed
@@ -90,6 +91,14 @@ fragments. User preferences and notification deliveries live in separate
 foreign-keyed tables. The notification ledger contains structural IDs, types,
 and trigger keys only, with a unique constraint enforcing exact deduplication.
 
+Phase 4 uses only the installed official `@beeai/cli/lib` 0.7.3
+`sse.streamJson` surface. Bee-specific payload parsing stays in the adapter;
+normalized IDs hash provider identities; malformed events and failures render
+fixed content-free messages. Buffers, parser text, refresh cadence, and
+reconnect attempts are bounded. Realtime has no direct `LoopStore` route: the
+watch coordinator can only request the existing authoritative historical sync,
+and provisional presentation never records notification delivery.
+
 ## No cloud dependency
 
 Phase 1 has no AWS, Amazon Bedrock, model-provider, or third-party API
@@ -112,6 +121,8 @@ data.
 
 Phase 2 adds no dependency: supported Node 22 includes the experimental
 but built-in `node:sqlite` API, which is verified in the supported runtime.
+
+Phase 4 adds no dependency or schema migration.
 
 `npm audit` is checked as part of every remediation pass and expected to
 report 0 vulnerabilities; when it doesn't, prefer the smallest version
