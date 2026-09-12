@@ -35,7 +35,16 @@ function eligibleToMerge(a: DetectionCandidate, b: DetectionCandidate): boolean 
   if (aConversationId && bConversationId && aConversationId !== bConversationId) {
     return false;
   }
-  return true;
+  return compatibleTypes(a.type, b.type);
+}
+
+const ACTION_TYPES = new Set<DetectionCandidate["type"]>(["commitment", "follow_up", "delegation"]);
+
+/** Semantic items are only merge-compatible with their own type. Action
+ * items may share a Bee Todo; a delegation wins that merge to retain owner
+ * semantics rather than being flattened into a generic commitment. */
+function compatibleTypes(a: DetectionCandidate["type"], b: DetectionCandidate["type"]): boolean {
+  return a === b || (ACTION_TYPES.has(a) && ACTION_TYPES.has(b));
 }
 
 /**
@@ -71,7 +80,7 @@ export function deduplicateCandidates(candidates: DetectionCandidate[]): Detecti
 }
 
 function mergeCandidates(a: DetectionCandidate, b: DetectionCandidate): DetectionCandidate {
-  const primary = a.confidence >= b.confidence ? a : b;
+  const primary = preferredCandidate(a, b);
   const secondary = primary === a ? b : a;
 
   return {
@@ -84,6 +93,16 @@ function mergeCandidates(a: DetectionCandidate, b: DetectionCandidate): Detectio
     source: mergeSources(primary.source, secondary.source),
     evidence: [...primary.evidence, ...secondary.evidence],
   };
+}
+
+function preferredCandidate(a: DetectionCandidate, b: DetectionCandidate): DetectionCandidate {
+  if (a.type === "delegation" && b.type !== "delegation") {
+    return a;
+  }
+  if (b.type === "delegation" && a.type !== "delegation") {
+    return b;
+  }
+  return a.confidence >= b.confidence ? a : b;
 }
 
 function mergeSources(a: LoopSource, b: LoopSource): LoopSource {

@@ -43,6 +43,16 @@ export function suppressResolvedOpenQuestions(
     }
 
     const questionText = candidate.evidence[0]?.text ?? candidate.text;
+    const questionSentenceIndex = candidate.sentenceIndex;
+    const sameUtterance = utterances[questionIndex];
+    if (sameUtterance?.text && questionSentenceIndex !== undefined) {
+      const sentences = splitSentences(sameUtterance.text);
+      for (const laterSentence of sentences.slice(questionSentenceIndex + 1)) {
+        if (!laterSentence.trim().endsWith("?") && jaccardSimilarity(questionText, laterSentence) >= RESOLUTION_SIMILARITY_THRESHOLD) {
+          return false;
+        }
+      }
+    }
     const windowEnd = Math.min(questionIndex + RESOLUTION_WINDOW, utterances.length - 1);
 
     for (let index = questionIndex + 1; index <= windowEnd; index += 1) {

@@ -28,7 +28,7 @@ export function candidatesFromConversation(
       return;
     }
 
-    for (const sentence of splitSentences(utterance.text)) {
+    for (const [sentenceIndex, sentence] of splitSentences(utterance.text).entries()) {
       const match = detectSentence(sentence);
       if (!match) {
         continue;
@@ -47,7 +47,7 @@ export function candidatesFromConversation(
           type: "utterance",
           sourceId: conversation.id,
           text: sentence,
-        }),
+        }, sentenceIndex),
       );
     }
   });
@@ -152,6 +152,7 @@ function finalizeCandidate(
   context: DetectionContext,
   source: LoopSource,
   evidence: { type: "utterance" | "fact" | "todo"; sourceId: string | null; text: string },
+  sentenceIndex?: number,
 ): DetectionCandidate {
   const extraction = extractDeadline(sentence, context.now, context.timeZone);
   const dueAt = extraction?.dueAt ?? null;
@@ -168,6 +169,7 @@ function finalizeCandidate(
     dueAtPhrase,
     source,
     evidence: [evidence],
+    sentenceIndex,
   };
 }
 

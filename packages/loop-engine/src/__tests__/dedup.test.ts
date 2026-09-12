@@ -69,6 +69,28 @@ describe("deduplicateCandidates", () => {
     expect(result).toHaveLength(2);
   });
 
+  it("does not merge a decision into a matching open Todo", () => {
+    const decision = makeCandidate({ type: "decision", confidence: 0.85, evidence: [{ type: "utterance", sourceId: "conv_1", text: "We'll proceed with option B." }] });
+    const todo = makeCandidate({ confidence: 0.95, source: { provider: "bee", conversationId: null, factId: null, todoId: "todo_1", utteranceIndexes: [] }, evidence: [{ type: "todo", sourceId: "todo_1", text: "Proceed with option B" }] });
+
+    const result = deduplicateCandidates([decision, todo]);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]?.type).toBe("decision");
+  });
+
+  it("preserves delegation and owner semantics when merging a matching Todo", () => {
+    const delegation = makeCandidate({ type: "delegation", confidence: 0.85, owner: { label: "Alex" }, source: { provider: "bee", conversationId: "conv_1", factId: null, todoId: null, utteranceIndexes: [0] }, evidence: [{ type: "utterance", sourceId: "conv_1", text: "Alex, please prepare the report." }] });
+    const todo = makeCandidate({ confidence: 0.95, source: { provider: "bee", conversationId: null, factId: null, todoId: "todo_1", utteranceIndexes: [] }, evidence: [{ type: "todo", sourceId: "todo_1", text: "Alex prepare the report" }] });
+
+    const result = deduplicateCandidates([delegation, todo]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]?.type).toBe("delegation");
+    expect(result[0]?.owner).toEqual({ label: "Alex" });
+    expect(result[0]?.evidence).toHaveLength(2);
+  });
+
   it("preserves utterance indexes from both merged candidates", () => {
     const a = makeCandidate({
       source: { provider: "bee", conversationId: "conv_1", factId: null, todoId: null, utteranceIndexes: [0] },

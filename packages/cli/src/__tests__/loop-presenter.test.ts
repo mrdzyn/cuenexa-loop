@@ -71,6 +71,8 @@ describe("renderLoopConnectivityReport (default, mandatory privacy-by-default ou
     expect(report).toContain(`Commitments: ${result.items.filter((i) => i.type === "commitment").length}`);
     expect(report).toContain(`Open questions: ${result.items.filter((i) => i.type === "open_question").length}`);
     expect(report).toContain(`Total Loop items: ${result.items.length}`);
+    expect(report).toContain("Source warnings: 0");
+    expect(report).toContain("Detection completeness: COMPLETE");
     expect(report).toContain("Private content printed: NO");
   });
 
@@ -82,6 +84,20 @@ describe("renderLoopConnectivityReport (default, mandatory privacy-by-default ou
 
     expect(report).toContain("Total Loop items: 0");
   });
+
+  it("surfaces partial source hydration structurally without printing source text", () => {
+    const snapshot = makeSnapshot({
+      conversations: [SENSITIVE_CONVERSATION],
+      warnings: [{ field: "conversation", message: "Failed to fetch full detail for conversation conv_synthetic_001; using summary-only data." }],
+    });
+    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC" });
+
+    const report = renderLoopConnectivityReport(snapshot, result);
+
+    expect(report).toContain("Source warnings: 1");
+    expect(report).toContain("Detection completeness: PARTIAL");
+    expect(report).not.toContain("send the revised proposal");
+  });
 });
 
 describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
@@ -89,7 +105,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     const config = loadConfig({});
     const result = detectLoopItems({ conversations: [SENSITIVE_CONVERSATION], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report).toContain("Send the revised proposal");
     expect(report).toContain("Who owns the deployment");
@@ -100,7 +116,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     const conversation = makeConversation(["I'll send it to jordan@example.com tomorrow."]);
     const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report).not.toContain("jordan@example.com");
     expect(report).toContain("[redacted-email]");
@@ -111,7 +127,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     const conversation = makeConversation(["Alex, please prepare the report by Friday."]);
     const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report).toContain("owner: Alex");
     expect(report).toMatch(/due \d{4}-\d{2}-\d{2}T/);
@@ -126,7 +142,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     ]);
     const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report).toContain("Commitments (1 of 3 shown)");
   });
@@ -136,7 +152,7 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     const conversation = makeConversation(["", "I'll send the revised proposal tomorrow."]);
     const result = detectLoopItems({ conversations: [conversation], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report).toContain("Detection warnings (1)");
   });
@@ -145,8 +161,19 @@ describe("renderLoopContentReport (--include-content, explicit opt-in)", () => {
     const config = loadConfig({});
     const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC" });
 
-    const report = renderLoopContentReport(result, config);
+    const report = renderLoopContentReport(makeSnapshot(), result, config);
 
     expect(report.toLowerCase()).toContain("not persisted");
+  });
+
+  it("reports source warning count without printing its message", () => {
+    const config = loadConfig({});
+    const snapshot = makeSnapshot({ warnings: [{ field: "conversation", message: "sensitive provider detail" }] });
+    const result = detectLoopItems({ conversations: [], facts: [], todos: [], now: NOW, timeZone: "UTC" });
+    const report = renderLoopContentReport(snapshot, result, config);
+
+    expect(report).toContain("Source warnings: 1");
+    expect(report).toContain("Detection completeness: PARTIAL");
+    expect(report).not.toContain("sensitive provider detail");
   });
 });

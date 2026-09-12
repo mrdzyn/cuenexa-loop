@@ -19,6 +19,7 @@ export interface CompletionSignal {
  * against a completion signal instead of another open candidate.
  */
 const RECONCILIATION_SIMILARITY_THRESHOLD = 0.7;
+const COMPLETABLE_TYPES = new Set<DetectionCandidate["type"]>(["commitment", "follow_up", "delegation"]);
 
 function candidateText(candidate: DetectionCandidate): string {
   return candidate.evidence.map((evidence) => evidence.text).join(" ");
@@ -42,6 +43,9 @@ export function reconcileCompletions(
   }
 
   return candidates.filter((candidate) => {
+    if (!COMPLETABLE_TYPES.has(candidate.type)) {
+      return true;
+    }
     const text = candidateText(candidate);
     return !completions.some((completion) => jaccardSimilarity(text, completion.text) >= RECONCILIATION_SIMILARITY_THRESHOLD);
   });

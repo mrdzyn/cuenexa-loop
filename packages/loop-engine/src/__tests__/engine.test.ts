@@ -219,6 +219,26 @@ describe("detectLoopItems — completion reconciliation (audit remediation item 
     expect(result.items[0]?.text).toContain("estimate");
   });
 
+  it("does not let a completed Todo suppress a decision with similar wording", () => {
+    const result = detect({
+      conversations: [makeConversation(["We'll proceed with option B."])],
+      todos: [makeTodo("Proceed with option B", { status: "completed" })],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("decision");
+  });
+
+  it("does not let a completed Todo suppress an open question with similar wording", () => {
+    const result = detect({
+      conversations: [makeConversation(["Who owns deployment?"])],
+      todos: [makeTodo("Who owns deployment", { status: "completed" })],
+    });
+
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("open_question");
+  });
+
   it("a completed Todo never becomes a Loop item itself, even without a matching open candidate", () => {
     const result = detect({ todos: [makeTodo("Archive the old proposal", { status: "completed" })] });
     expect(result.items).toHaveLength(0);
@@ -262,6 +282,17 @@ describe("detectLoopItems — expanded negation (audit remediation item 5)", () 
 });
 
 describe("detectLoopItems — open-question reconciliation (audit remediation item 6)", () => {
+  it("suppresses a question answered by a later sentence in the same utterance", () => {
+    const result = detect({ conversations: [makeConversation(["Who owns deployment? Alex owns deployment."])] });
+    expect(result.items).toHaveLength(0);
+  });
+
+  it("keeps a same-utterance question open when the later sentence does not answer it", () => {
+    const result = detect({ conversations: [makeConversation(["Who owns deployment? No one knows yet."])] });
+    expect(result.items).toHaveLength(1);
+    expect(result.items[0]?.type).toBe("open_question");
+  });
+
   it("suppresses a question answered later in the same conversation", () => {
     const result = detect({
       conversations: [makeConversation(["Who owns deployment?", "Alex owns deployment."])],

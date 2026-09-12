@@ -28,7 +28,7 @@ async function main(): Promise<void> {
       timeZone,
     });
 
-    console.log(includeContent ? renderLoopContentReport(result, config) : renderLoopConnectivityReport(snapshot, result));
+    console.log(includeContent ? renderLoopContentReport(snapshot, result, config) : renderLoopConnectivityReport(snapshot, result));
   } catch (error) {
     console.error(renderBeeError(error));
     process.exitCode = 1;

@@ -71,6 +71,16 @@ describe("extractDeadline (time zone awareness)", () => {
     expect(result?.dueAt).toBe("2026-01-05T07:59:59.999Z");
   });
 
+  it("uses the 23-hour spring-forward local day in America/Los_Angeles", () => {
+    const result = extractDeadline("Send it by end of day.", "2026-03-08T20:00:00.000Z", "America/Los_Angeles");
+    expect(result?.dueAt).toBe("2026-03-09T06:59:59.999Z");
+  });
+
+  it("uses the 25-hour fall-back local day in America/Los_Angeles", () => {
+    const result = extractDeadline("Send it by end of day.", "2026-11-01T20:00:00.000Z", "America/Los_Angeles");
+    expect(result?.dueAt).toBe("2026-11-02T07:59:59.999Z");
+  });
+
   it("resolves a weekday name against the local calendar day in America/Los_Angeles", () => {
     // Local today is Sunday 2026-01-04; the nearest Friday is 2026-01-09.
     const result = extractDeadline("Let's revisit on Friday.", "2026-01-05T06:00:00.000Z", "America/Los_Angeles");
@@ -111,6 +121,14 @@ describe("extractDeadline (invalid calendar dates are never invented)", () => {
     // Reference now is late Feb 2027 (not a leap year); the next Feb 29 candidate year (2027) doesn't have one.
     const result = extractDeadline("Due February 29.", "2027-02-20T00:00:00.000Z", "UTC");
     expect(result?.dueAt).toBeNull();
+  });
+
+  it("does not resolve February 29 in a non-leap year before the normalized date", () => {
+    expect(extractDeadline("Due February 29.", "2027-01-05T00:00:00.000Z", "UTC")?.dueAt).toBeNull();
+  });
+
+  it("does not resolve February 29 in a non-leap year after the normalized date", () => {
+    expect(extractDeadline("Due February 29.", "2027-06-01T00:00:00.000Z", "UTC")?.dueAt).toBeNull();
   });
 
   it("preserves the raw phrase even when the date is invalid", () => {

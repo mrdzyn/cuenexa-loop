@@ -88,6 +88,8 @@ export interface DetectionCandidate {
   dueAtPhrase: string | null;
   source: LoopSource;
   evidence: LoopEvidence[];
+  /** Internal sentence position for same-utterance question resolution. */
+  sentenceIndex?: number;
 }
 
 /** Non-fatal issue encountered while detecting Loop items — mirrors NormalizationWarning's shape and role. */

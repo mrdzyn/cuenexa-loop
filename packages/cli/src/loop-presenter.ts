@@ -37,7 +37,9 @@ export function renderLoopConnectivityReport(snapshot: BeeSnapshot, result: Loop
     "",
     `Total Loop items: ${result.items.length}`,
     "",
+    `Source warnings: ${snapshot.warnings.length}`,
     `Detection warnings: ${result.warnings.length}`,
+    `Detection completeness: ${snapshot.warnings.length === 0 ? "COMPLETE" : "PARTIAL"}`,
     "Private content printed: NO",
   ].join("\n");
 }
@@ -72,7 +74,7 @@ const SECTION_TYPES: Array<{ title: string; type: LoopItemType }> = [
  * for `bee:check` (see presenter.ts) — this is deliberate content
  * inspection, not raw output.
  */
-export function renderLoopContentReport(result: LoopDetectionResult, config: LoopConfig): string {
+export function renderLoopContentReport(snapshot: BeeSnapshot, result: LoopDetectionResult, config: LoopConfig): string {
   const sections = [
     "CueNexa Loop — Detection Check (--include-content: redacted and truncated, not raw)",
   ];
@@ -86,6 +88,11 @@ export function renderLoopContentReport(result: LoopDetectionResult, config: Loo
   if (warningsBlock) {
     sections.push("", warningsBlock);
   }
+
+  // Source-warning messages are not printed here: normalizers may include
+  // provider values in them. The structural count still makes partial input
+  // visible without widening the explicit-content report's privacy scope.
+  sections.push("", `Source warnings: ${snapshot.warnings.length}`, `Detection completeness: ${snapshot.warnings.length === 0 ? "COMPLETE" : "PARTIAL"}`);
 
   sections.push(
     "",

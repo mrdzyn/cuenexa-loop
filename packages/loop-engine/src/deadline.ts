@@ -148,8 +148,10 @@ function zonedMidnightUTC(date: CalendarDate, timeZone: string): Date {
 
 /** The UTC instant corresponding to local end-of-day (23:59:59.999) on `date` in `timeZone`. */
 function zonedEndOfDayUTC(date: CalendarDate, timeZone: string): Date {
-  const midnight = zonedMidnightUTC(date, timeZone);
-  return new Date(midnight.getTime() + 24 * 60 * 60 * 1000 - 1);
+  // A local day can be 23 or 25 hours at a DST boundary. Calculate the
+  // next *calendar* midnight in the zone rather than adding 24 hours.
+  const nextMidnight = zonedMidnightUTC(addCalendarDays(date, 1), timeZone);
+  return new Date(nextMidnight.getTime() - 1);
 }
 
 // --- Calendar-date arithmetic (timezone-independent once given Y/M/D) ----
@@ -207,6 +209,12 @@ function absoluteMonthDayDate(today: CalendarDate, monthName: string, day: strin
   }
 
   let candidate: CalendarDate = { year: today.year, month: monthIndex + 1, day: dayNumber };
+  // Validate before comparing/rolling over. Date.UTC normalizes invalid
+  // dates (notably 2027-02-29) and would otherwise make a non-leap-year
+  // request appear to be a passed March date that can roll into 2028.
+  if (!isValidCalendarDate(candidate)) {
+    return null;
+  }
   if (compareCalendarDates(candidate, today) < 0) {
     candidate = { ...candidate, year: today.year + 1 };
   }
