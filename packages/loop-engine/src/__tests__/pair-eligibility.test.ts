@@ -9,12 +9,13 @@ function makeItem(
   text: string,
   type: LoopItemType = "commitment",
   provider = "test-provider",
+  state: LoopItem["state"] = "open",
 ): LoopItem {
   return LoopItemSchema.parse({
     id,
     type,
     text,
-    state: "open",
+    state,
     confidence: 0.9,
     owner: null,
     counterparties: [],
@@ -135,5 +136,15 @@ describe("evaluatePairEligibility", () => {
     const first = makeItem("a", "conv-a", "I'll send the pricing deck.");
     const second = makeItem("b", "conv-b", "Please review the pricing deck.", "delegation");
     expect(evaluatePairEligibility(first, second)).toEqual(evaluatePairEligibility(second, first));
+  });
+
+  it.each(["provisional", "dismissed"] as const)("rejects %s items as correlation seeds", (state) => {
+    const result = evaluatePairEligibility(
+      makeItem("a", "conv-a", "I'll send the pricing deck.", "commitment", "test-provider", state),
+      makeItem("b", "conv-b", "Please review the pricing deck."),
+    );
+
+    expect(result.eligible).toBe(false);
+    expect(result.rejectionReasonCodes).toContain("ineligible_item_state");
   });
 });

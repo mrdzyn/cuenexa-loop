@@ -12,6 +12,7 @@ export const PairEligibilityRejectionReasonCodeSchema = z.enum([
   "decision_requires_strong_anchor",
   "no_shared_specific_anchors",
   "generic_language_only",
+  "ineligible_item_state",
 ]);
 export type PairEligibilityRejectionReasonCode = z.infer<typeof PairEligibilityRejectionReasonCodeSchema>;
 
@@ -28,3 +29,23 @@ export const PairEligibilityResultSchema = z.object({
   hasSharedSpecificAnchorPhrase: z.boolean(),
 });
 export type PairEligibilityResult = z.infer<typeof PairEligibilityResultSchema>;
+
+export const CorrelationSupportingSignalsSchema = z.object({
+  chronologicalContinuation: z.boolean(),
+  matchingDueDate: z.boolean(),
+  matchingOwner: z.boolean(),
+});
+export type CorrelationSupportingSignals = z.infer<typeof CorrelationSupportingSignalsSchema>;
+
+/** Explainable deterministic heuristic evaluation; confidence is not a probability. */
+export const CorrelationScoreResultSchema = z.object({
+  eligible: z.boolean(),
+  accepted: z.boolean(),
+  confidence: z.number().min(0).max(1),
+  reasonCodes: z.array(LoopCorrelationReasonCodeSchema),
+  rejectionReasonCodes: z.array(PairEligibilityRejectionReasonCodeSchema),
+  sharedSpecificAnchorCount: z.number().int().nonnegative(),
+  hasSharedSpecificAnchorPhrase: z.boolean(),
+  supportingSignals: CorrelationSupportingSignalsSchema,
+});
+export type CorrelationScoreResult = z.infer<typeof CorrelationScoreResultSchema>;

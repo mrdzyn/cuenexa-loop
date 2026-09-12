@@ -17,6 +17,9 @@ export function evaluatePairEligibility(a: LoopItem, b: LoopItem): PairEligibili
   if (a.id === b.id) {
     rejectionReasonCodes.push("same_member");
   }
+  if (isIneligibleState(a.state) || isIneligibleState(b.state)) {
+    rejectionReasonCodes.push("ineligible_item_state");
+  }
   if (a.source.conversationId === null || b.source.conversationId === null) {
     rejectionReasonCodes.push("missing_conversation_context");
   } else if (a.source.conversationId === b.source.conversationId) {
@@ -67,6 +70,10 @@ export function evaluatePairEligibility(a: LoopItem, b: LoopItem): PairEligibili
     sharedSpecificAnchorCount: sharedSpecificTokens.length,
     hasSharedSpecificAnchorPhrase,
   });
+}
+
+function isIneligibleState(state: LoopItem["state"]): boolean {
+  return state === "provisional" || state === "dismissed";
 }
 
 function itemFamily(type: LoopItemType): ItemFamily {
