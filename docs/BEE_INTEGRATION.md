@@ -70,9 +70,31 @@ It follows Bee cursors with finite page/item caps, detects cursor repetition,
 de-duplicates page boundaries, and hydrates all fetched conversations. A cap
 or repeated cursor is reported as partial rather than silently treated as an
 authoritative history. Bee may take time to process mobile history; run a
-manual Bee processing action if needed, then run `loops:sync` again. CueNexa
-Loop deliberately does not ingest Bee realtime events or write anything back
-to Bee.
+manual Bee processing action if needed, then run `loops:sync` again.
+
+## Phase 4 supported realtime surface
+
+Phase 4 was implemented after inspecting the workspace-installed
+`@beeai/cli` **0.7.3** package. Its public `@beeai/cli/lib` export includes
+`bee.sse.streamJson({ types, signal })`, which returns an `AsyncIterable` at
+`.events`, an explicit `.close()` function, and the spawned Bee subprocess.
+The package README documents the same Node library call and the public
+`connected`, `new-utterance`, `new-conversation`, and
+`update-conversation` event payloads used by CueNexa.
+
+`BeeAdapterClient.subscribeRealtime()` is the only wrapper over that surface.
+It requests only those four documented event types, normalizes them into
+provider-independent ephemeral contracts, bounds in-memory transport dedupe,
+and emits fixed content-free warnings for malformed/unsupported events. The
+official surface does not document replay or resume guarantees, so CueNexa
+treats delivery as lossy/at-most-once and repairs gaps only by running the
+existing authoritative processed-history synchronization. Reconnect/backoff
+is orchestration policy in the foreground `loops:watch` process; it is not a
+private transport implementation.
+
+Realtime subscription data is never passed directly to `LoopStore`, persisted,
+or written back to Bee. A disconnect is only a possible observation gap, not a
+conversation completion or Loop lifecycle event.
 
 ## Optional proxy fallback: none
 
