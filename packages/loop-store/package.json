@@ -1,0 +1,15 @@
+{
+  "name": "@cuenexa-loop/loop-store",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local-only, privacy-minimizing persistent Loop state",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -b",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@cuenexa-loop/loop-engine": "*"
+  }
+}
