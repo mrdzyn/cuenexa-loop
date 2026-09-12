@@ -34,7 +34,8 @@
     "loops:notify": "npm run build && node packages/cli/dist/loops-notify.js",
     "loops:history": "npm run build && node packages/cli/dist/loops-history.js",
     "loops:reset": "npm run build && node packages/cli/dist/loops-reset.js",
-    "loops:demo": "npm run build && node packages/cli/dist/loops-demo.js"
+    "loops:demo": "npm run build && node packages/cli/dist/loops-demo.js",
+    "loops:watch": "npm run build && node packages/cli/dist/loops-watch.js"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

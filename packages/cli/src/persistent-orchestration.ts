@@ -7,6 +7,7 @@ export interface AuthoritativeSyncResult {
   readonly reconcile: ReconcileResult;
   /** Conversations represented by authoritative detected LoopItems in this processed snapshot. */
   readonly detectedConversationIds: ReadonlySet<string>;
+  readonly timeZone: string;
 }
 
 export async function syncPersistentLoops(
@@ -35,5 +36,6 @@ export async function syncPersistentLoopsWithDetails(
   return {
     reconcile: store.reconcile({ loops: result.correlation.loops, observedAt: now, complete }),
     detectedConversationIds,
+    timeZone: resolveTimeZone(timeZone),
   };
 }

@@ -29,6 +29,7 @@ describe("authoritative realtime handoff", () => {
     const refresh = vi.fn(async (now: string) => ({
       reconcile: store.reconcile({ loops: [loop], observedAt: now, complete: true }),
       detectedConversationIds: new Set(["conversation_synthetic"]),
+      timeZone: "UTC",
     }));
     const coordinator = coordinatorWith(refresh);
     coordinator.observe(utterance(), "UTC");
@@ -60,6 +61,7 @@ describe("authoritative realtime handoff", () => {
     const refresh = vi.fn(async (now: string) => ({
       reconcile: store.reconcile({ loops: [syntheticLoop("gap")], observedAt: now, complete: true }),
       detectedConversationIds: new Set(["conversation_synthetic"]),
+      timeZone: "UTC",
     }));
     const coordinator = coordinatorWith(refresh);
     expect((await coordinator.refresh("realtime_gap", NOW)).attempted).toBe(true);
@@ -75,6 +77,7 @@ describe("authoritative realtime handoff", () => {
     const coordinator = coordinatorWith(async (now) => ({
       reconcile: store.reconcile({ loops: [], observedAt: now, complete: false }),
       detectedConversationIds: new Set(),
+      timeZone: "UTC",
     }));
     await coordinator.refresh("realtime_gap", LATER);
     expect(store.listThreads()[0]?.state).toBe("open");
@@ -93,6 +96,7 @@ describe("authoritative realtime handoff", () => {
     const coordinator = coordinatorWith(async (now) => ({
       reconcile: store.reconcile({ loops: [expanded], observedAt: now, complete: true }),
       detectedConversationIds: new Set(["conversation_synthetic"]),
+      timeZone: "UTC",
     }));
     coordinator.observe(utterance(), "UTC");
     await coordinator.refresh("conversation_processed", LATER);
@@ -128,8 +132,8 @@ function coordinatorWith(
   return new RealtimeHandoffCoordinator(awareness, refresh);
 }
 
-function emptySync(): { reconcile: ReconcileResult; detectedConversationIds: Set<string> } {
-  return { reconcile: { threads: [], events: [], warnings: [], complete: true }, detectedConversationIds: new Set() };
+function emptySync(): { reconcile: ReconcileResult; detectedConversationIds: Set<string>; timeZone: string } {
+  return { reconcile: { threads: [], events: [], warnings: [], complete: true }, detectedConversationIds: new Set(), timeZone: "UTC" };
 }
 
 function utterance(id = "event_synthetic", utteranceId = "utterance_synthetic", observedAt = NOW): EphemeralRealtimeUtterance {
