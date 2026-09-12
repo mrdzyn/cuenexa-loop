@@ -5,9 +5,17 @@ import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { createStableMemberIdentity } from "@cuenexa-loop/loop-engine";
 import type { Loop } from "@cuenexa-loop/loop-engine";
-import type { LoopChangeEvent, LoopChangeEventType, LoopThread, ReconcileInput, ReconcileResult } from "./types.js";
+import type {
+  LoopChangeEvent,
+  LoopChangeEventType,
+  LoopThread,
+  LoopThreadUserState,
+  ReconcileInput,
+  ReconcileResult,
+  UserStateMutationResult,
+} from "./types.js";
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const DEFAULT_RETENTION_DAYS = 30;
 const MIN_RETENTION_DAYS = 1;
 const MAX_RETENTION_DAYS = 365;
@@ -31,6 +39,15 @@ interface EventRow {
   event_type: LoopChangeEventType;
   observed_at: string;
   details_json: string;
+}
+
+interface UserStateRow {
+  thread_id: string;
+  acknowledged_at: string | null;
+  snoozed_until: string | null;
+  pinned: number;
+  dismissed_at: string | null;
+  updated_at: string;
 }
 
 export interface LoopStoreOptions {
@@ -124,6 +141,54 @@ export class LoopStore {
     return rows.map(eventFromRow);
   }
 
+  getThreadUserState(threadId: string): LoopThreadUserState {
+    this.requireThread(threadId);
+    const row = this.database
+      .prepare("SELECT thread_id, acknowledged_at, snoozed_until, pinned, dismissed_at, updated_at FROM loop_thread_user_state WHERE thread_id = ?")
+      .get(threadId) as unknown as UserStateRow | undefined;
+    return row ? userStateFromRow(row) : emptyUserState(threadId);
+  }
+
+  acknowledgeThread(threadId: string, acknowledgedAt: string): UserStateMutationResult {
+    requireIsoInstant(acknowledgedAt, "acknowledgement timestamp");
+    return this.mutateUserState(threadId, acknowledgedAt, (current) => ({ ...current, acknowledgedAt }));
+  }
+
+  snoozeThread(threadId: string, snoozedUntil: string, now: string): UserStateMutationResult {
+    const untilMs = requireIsoInstant(snoozedUntil, "snooze timestamp");
+    const nowMs = requireIsoInstant(now, "current timestamp");
+    const duration = untilMs - nowMs;
+    if (duration < 60_000 || duration > 365 * 24 * 60 * 60 * 1000) {
+      throw new LoopStoreError("Snooze must be between 1 minute and 365 days in the future.");
+    }
+    return this.mutateUserState(threadId, now, (current) => ({ ...current, snoozedUntil }));
+  }
+
+  unsnoozeThread(threadId: string, updatedAt: string): UserStateMutationResult {
+    requireIsoInstant(updatedAt, "update timestamp");
+    return this.mutateUserState(threadId, updatedAt, (current) => ({ ...current, snoozedUntil: null }));
+  }
+
+  pinThread(threadId: string, updatedAt: string): UserStateMutationResult {
+    requireIsoInstant(updatedAt, "update timestamp");
+    return this.mutateUserState(threadId, updatedAt, (current) => ({ ...current, pinned: true }));
+  }
+
+  unpinThread(threadId: string, updatedAt: string): UserStateMutationResult {
+    requireIsoInstant(updatedAt, "update timestamp");
+    return this.mutateUserState(threadId, updatedAt, (current) => ({ ...current, pinned: false }));
+  }
+
+  dismissThread(threadId: string, dismissedAt: string): UserStateMutationResult {
+    requireIsoInstant(dismissedAt, "dismissal timestamp");
+    return this.mutateUserState(threadId, dismissedAt, (current) => ({ ...current, dismissedAt }));
+  }
+
+  restoreThread(threadId: string, updatedAt: string): UserStateMutationResult {
+    requireIsoInstant(updatedAt, "update timestamp");
+    return this.mutateUserState(threadId, updatedAt, (current) => ({ ...current, dismissedAt: null }));
+  }
+
   /**
    * Atomically applies a processed Phase 1B snapshot. Re-running the same
    * snapshot is a no-op: it does not add events or change thread timestamps.
@@ -134,11 +199,12 @@ export class LoopStore {
     const warnings: string[] = input.complete ? [] : ["Source snapshot is partial; absence is not used for reconciliation."];
 
     this.transaction(() => {
+      // Expired resolved history must not be revived by the same sync.
+      this.purgeResolvedInternal(input.observedAt);
       for (const loop of loops) {
         const result = this.reconcileLoop(loop, input.observedAt, events, warnings);
         void result;
       }
-      this.purgeResolvedInternal(input.observedAt);
     });
 
     const threadIds = new Set<string>();
@@ -203,10 +269,61 @@ export class LoopStore {
             details_json TEXT NOT NULL
           );
           CREATE INDEX IF NOT EXISTS loop_events_thread_observed ON loop_events(thread_id, observed_at DESC);
+          ${phaseThreeTablesSql()}
           PRAGMA user_version = ${SCHEMA_VERSION};
         `);
       });
+    } else if (version === 1) {
+      this.transaction(() => {
+        this.database.exec(`${phaseThreeTablesSql()} PRAGMA user_version = ${SCHEMA_VERSION};`);
+      });
     }
+  }
+
+  private mutateUserState(
+    threadId: string,
+    updatedAt: string,
+    mutation: (current: LoopThreadUserState) => LoopThreadUserState,
+  ): UserStateMutationResult {
+    let result: UserStateMutationResult | undefined;
+    this.transaction(() => {
+      this.requireThread(threadId);
+      const current = this.readUserState(threadId);
+      const next = mutation(current);
+      const changed =
+        current.acknowledgedAt !== next.acknowledgedAt ||
+        current.snoozedUntil !== next.snoozedUntil ||
+        current.pinned !== next.pinned ||
+        current.dismissedAt !== next.dismissedAt;
+      if (changed) {
+        this.database.prepare(`
+          INSERT INTO loop_thread_user_state
+            (thread_id, acknowledged_at, snoozed_until, pinned, dismissed_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?)
+          ON CONFLICT(thread_id) DO UPDATE SET
+            acknowledged_at = excluded.acknowledged_at,
+            snoozed_until = excluded.snoozed_until,
+            pinned = excluded.pinned,
+            dismissed_at = excluded.dismissed_at,
+            updated_at = excluded.updated_at
+        `).run(threadId, next.acknowledgedAt, next.snoozedUntil, next.pinned ? 1 : 0, next.dismissedAt, updatedAt);
+      }
+      result = { changed, state: changed ? { ...next, updatedAt } : current };
+    });
+    if (!result) throw new LoopStoreError("Local user-state update did not complete.");
+    return result;
+  }
+
+  private readUserState(threadId: string): LoopThreadUserState {
+    const row = this.database
+      .prepare("SELECT thread_id, acknowledged_at, snoozed_until, pinned, dismissed_at, updated_at FROM loop_thread_user_state WHERE thread_id = ?")
+      .get(threadId) as unknown as UserStateRow | undefined;
+    return row ? userStateFromRow(row) : emptyUserState(threadId);
+  }
+
+  private requireThread(threadId: string): void {
+    const found = this.database.prepare("SELECT 1 AS found FROM loop_threads WHERE thread_id = ?").get(threadId);
+    if (!found) throw new LoopStoreError("Unknown local Loop thread ID.");
   }
 
   private reconcileLoop(loop: Loop, observedAt: string, events: LoopChangeEvent[], warnings: string[]): string {
@@ -359,6 +476,66 @@ export function resetLoopStore(path = resolveLoopStorePath()): boolean {
   rmSync(`${path}-wal`, { force: true });
   rmSync(`${path}-shm`, { force: true });
   return true;
+}
+
+function phaseThreeTablesSql(): string {
+  return `
+    CREATE TABLE IF NOT EXISTS loop_thread_user_state (
+      thread_id TEXT PRIMARY KEY REFERENCES loop_threads(thread_id) ON DELETE CASCADE,
+      acknowledged_at TEXT,
+      snoozed_until TEXT,
+      pinned INTEGER NOT NULL DEFAULT 0 CHECK (pinned IN (0, 1)),
+      dismissed_at TEXT,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS loop_notification_deliveries (
+      notification_id TEXT PRIMARY KEY,
+      thread_id TEXT NOT NULL REFERENCES loop_threads(thread_id) ON DELETE CASCADE,
+      notification_type TEXT NOT NULL,
+      trigger_key TEXT NOT NULL,
+      delivered_at TEXT NOT NULL,
+      UNIQUE (thread_id, notification_type, trigger_key)
+    );
+    CREATE INDEX IF NOT EXISTS loop_notification_thread_delivered
+      ON loop_notification_deliveries(thread_id, delivered_at DESC);
+  `;
+}
+
+function emptyUserState(threadId: string): LoopThreadUserState {
+  return {
+    threadId,
+    acknowledgedAt: null,
+    snoozedUntil: null,
+    pinned: false,
+    dismissedAt: null,
+    updatedAt: null,
+  };
+}
+
+function userStateFromRow(row: UserStateRow): LoopThreadUserState {
+  return {
+    threadId: row.thread_id,
+    acknowledgedAt: row.acknowledged_at,
+    snoozedUntil: row.snoozed_until,
+    pinned: row.pinned === 1,
+    dismissedAt: row.dismissed_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function requireIsoInstant(value: string, label: string): number {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$/.test(value)) {
+    throw new LoopStoreError(`Invalid ${label}; expected an absolute ISO-8601 UTC timestamp.`);
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed) || new Date(parsed).toISOString() !== normalizeIsoMilliseconds(value)) {
+    throw new LoopStoreError(`Invalid ${label}; expected a real absolute ISO-8601 UTC timestamp.`);
+  }
+  return parsed;
+}
+
+function normalizeIsoMilliseconds(value: string): string {
+  return value.includes(".") ? value : value.replace("Z", ".000Z");
 }
 
 function preparePrivatePath(path: string): void {

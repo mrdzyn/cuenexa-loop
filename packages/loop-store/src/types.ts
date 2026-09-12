@@ -39,6 +39,21 @@ export interface LoopChangeEvent {
   readonly details: Readonly<Record<string, string | null>>;
 }
 
+/** Local preference state; never changes the source-derived Loop lifecycle. */
+export interface LoopThreadUserState {
+  readonly threadId: string;
+  readonly acknowledgedAt: string | null;
+  readonly snoozedUntil: string | null;
+  readonly pinned: boolean;
+  readonly dismissedAt: string | null;
+  readonly updatedAt: string | null;
+}
+
+export interface UserStateMutationResult {
+  readonly changed: boolean;
+  readonly state: LoopThreadUserState;
+}
+
 export interface ReconcileInput {
   readonly loops: readonly import("@cuenexa-loop/loop-engine").Loop[];
   readonly observedAt: string;
