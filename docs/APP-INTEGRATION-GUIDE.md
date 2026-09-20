@@ -5,14 +5,17 @@
 This document is the canonical guide for integrating CueNexa Loop into external host applications.
 
 It is written for:
-- **Application developers** embedding CueNexa Loop into desktop apps, menu bar utilities, notification managers, or personal productivity tools.
+- **Application developers** embedding CueNexa Loop into local desktop applications, Electron utilities, or personal workflow tools.
 - **AI coding agents** tasked with designing, scaffolding, implementing, or reviewing a CueNexa Loop integration.
 - **Reviewers and auditors** independently verifying that a host integration preserves CueNexa Loop's architectural and privacy invariants.
 - **QA operators** conducting automated integration testing and live acceptance validation.
 
-### Core architectural premise
+### Core architectural premise and package status
 
-CueNexa Loop is a **local-first follow-through engine**, not a cloud service, transcript warehouse, or autonomous background agent. It operates exclusively on the user's local machine under the user's authenticated Amazon Bee developer session.
+CueNexa Loop is a **local-first follow-through engine**, not a cloud service, transcript warehouse, or autonomous background daemon. It operates exclusively on the user's local machine under the user's authenticated Amazon Bee developer session.
+
+> [!IMPORTANT]
+> **Package Status Notice:** All packages in this repository (`@cuenexa-loop/contracts`, `@cuenexa-loop/bee-adapter`, `@cuenexa-loop/loop-engine`, `@cuenexa-loop/loop-store`, `@cuenexa-loop/cli`) are currently marked `"private": true`. They are workspace-exported packages intended for composition within this repository or through explicitly arranged local/source dependencies. They are **not** currently published to the public npm registry. Developers and AI agents must not assume `npm install @cuenexa-loop/...` works from public npm. Publishing or versioning a standalone public SDK is a future product/architecture decision requiring explicit human authorization.
 
 The cardinal rule of all integrations is:
 > **Processed Bee history is the only authority for persistent `LoopThread` state. Bee realtime is optional, ephemeral, provisional acceleration only.**
@@ -37,7 +40,7 @@ Every host integration must strictly adhere to these non-negotiable invariants:
 
 ## 3. Repository and package map
 
-CueNexa Loop is structured as an npm workspaces monorepo with 5 packages. Integrators must understand the distinct role and stability of each:
+CueNexa Loop is structured as an npm workspaces monorepo. Integrators must understand the distinct role and current exported surface of each package:
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────────┐
@@ -47,7 +50,7 @@ CueNexa Loop is structured as an npm workspaces monorepo with 5 packages. Integr
                  ▼                                       ▼
 ┌─────────────────────────────────┐     ┌─────────────────────────────────┐
 │    @cuenexa-loop/bee-adapter    │     │    @cuenexa-loop/bee-adapter    │
-│  fetchCompleteDetectionSnapshot │     │      subscribeToBeeRealtime     │
+│  fetchCompleteDetectionSnapshot │     │        subscribeRealtime        │
 └────────────────┬────────────────┘     └────────────────┬────────────────┘
                  │ BeeSnapshot                           │ EphemeralRealtimeUtterance
                  ▼                                       ▼
@@ -69,42 +72,50 @@ CueNexa Loop is structured as an npm workspaces monorepo with 5 packages. Integr
 └─────────────────────────────────┘
 ```
 
-### 3.1 `@cuenexa-loop/contracts` (Exported Library Surface)
+### 3.1 `@cuenexa-loop/contracts` (Workspace-Exported Library Surface)
 - **Role:** Pure TypeScript types and runtime Zod schemas defining provider-independent domain models.
 - **Exported APIs:**
   - Historical domain types: `LoopConversation`, `LoopFact`, `LoopTodo`, `Page<T>`, `NormalizationWarning`.
   - Ephemeral realtime types: `EphemeralRealtimeEvent`, `EphemeralRealtimeUtterance`, `EphemeralRealtimeConversation`, `EphemeralRealtimeWarning`.
   - Schemas: `LoopConversationSchema`, `EphemeralRealtimeEventSchema`, etc.
-- **Integration Stability:** Stable.
+- **Surface:** Package-root exported surface (`"main": "./dist/index.js"`, `"types": "./dist/index.d.ts"`).
 
-### 3.2 `@cuenexa-loop/bee-adapter` (Exported Library Surface)
+### 3.2 `@cuenexa-loop/bee-adapter` (Workspace-Exported Library Surface)
 - **Role:** The only package in the repository with knowledge of Bee's wire format and CLI subprocess client.
 - **Exported APIs:**
-  - `BeeAdapterClient`: Wrapper around official `@beeai/cli/lib` client. Methods: `checkAuthentication()`, `ensureAuthenticated()`, `listConversations()`, `getConversation()`, `listFacts()`, `listTodos()`.
+  - `BeeAdapterClient`: Primary client wrapper around official `@beeai/cli/lib`.
+    - `ensureAuthenticated(): Promise<AuthenticationInfo>`: Validates active Bee authentication and returns `{ timeZone: string | null }`.
+    - `listConversations(options?: ListPageOptions): Promise<Page<BeeConversation>>`.
+    - `getConversation(id: string): Promise<BeeConversation | null>`.
+    - `listFacts(options?: ListPageOptions): Promise<Page<BeeFact>>`.
+    - `listTodos(options?: ListPageOptions): Promise<Page<BeeTodo>>`.
+    - `subscribeRealtime(options?: BeeRealtimeSubscribeOptions): BeeRealtimeSubscription`: High-level subscription returning `{ events: AsyncIterable<EphemeralRealtimeEvent>, close(): void }`.
   - Snapshot fetchers:
     - `fetchBeeSnapshot(client)`: Lightweight single-page fetch (list records only, empty utterances). Used for connectivity checks.
     - `fetchDetectionSnapshot(client, options)`: Hydrates full conversation detail for first page.
     - `fetchCompleteDetectionSnapshot(client, options)`: Full, bounded pagination across all processable pages with hydration and deduplication. **This is the required authoritative synchronization entry point.**
-  - Realtime subscription:
-    - `subscribeToBeeRealtime(client, options, identities)`: Returns `BeeRealtimeSubscription` with an async generator `events: AsyncIterable<EphemeralRealtimeEvent>`.
+  - Lower-level realtime helper:
+    - `subscribeToBeeRealtime(client, options, identities)`: Package-root helper operating against the underlying Bee SSE client surface.
     - `BeeConversationIdentityBridge`: Bounded memory-only map between realtime UUIDs and historical numeric IDs.
   - Error classes: `BeeError`, `BeeCliUnavailableError`, `BeeAuthenticationError`, `BeeMalformedResponseError`, `classifyBeeError`.
-- **Integration Stability:** Stable.
+- **Surface:** Package-root exported surface (`"main": "./dist/index.js"`).
 
-### 3.3 `@cuenexa-loop/loop-engine` (Exported Library Surface)
+### 3.3 `@cuenexa-loop/loop-engine` (Workspace-Exported Library Surface)
 - **Role:** Pure, deterministic detection, correlation, and provisional awareness logic. Has no I/O, database, network, or Bee-specific dependency.
 - **Exported APIs:**
   - Detection: `detectLoopItems(snapshot, options): LoopDetectionResult`.
   - Correlation: `correlateLoopItems(items, options): LoopCorrelationResult`.
-  - Primitives: `extractDeadline`, `scoreCorrelationPair`, `deriveLoopLifecycle`, `deriveLoopTitle`, `buildLoopTimeline`.
+  - Primitives: `extractDeadline()`, `scoreCorrelationPair()`, `deriveLoopLifecycle()`, `deriveLoopTitle()`, `buildLoopTimeline()`.
   - Ephemeral Awareness:
     - `ProvisionalAwareness`: In-memory state machine for foreground realtime awareness.
-    - `ingest(event, timeZone): ProvisionalIngestResult` (returns `{ emitted, active }`).
+    - `ingest(event: EphemeralRealtimeUtterance, timeZone: string): ProvisionalIngestResult` (returns `{ emitted, active }`).
     - `list(): ProvisionalSignal[]`.
-    - `retireConversation(conversationId: string): number`.
-- **Integration Stability:** Stable.
+    - `retireConversations(conversationIds: ReadonlySet<string>): number`: Retires provisional signals for conversations confirmed by authoritative processed history.
+    - `resolveConversationIdentity(sessionId: string, conversationId: string): number`.
+    - `pruneExpired(now: string): number`.
+- **Surface:** Package-root exported surface (`"main": "./dist/index.js"`).
 
-### 3.4 `@cuenexa-loop/loop-store` (Exported Library Surface)
+### 3.4 `@cuenexa-loop/loop-store` (Workspace-Exported Library Surface)
 - **Role:** Local SQLite persistence using Node.js built-in `node:sqlite` (`DatabaseSync`). Manages schema v2 tables (`loop_threads`, `loop_events`, `loop_thread_user_state`, `loop_notification_deliveries`).
 - **Exported APIs:**
   - `LoopStore`: Persistent local store.
@@ -118,14 +129,14 @@ CueNexa Loop is structured as an npm workspaces monorepo with 5 packages. Integr
     - `rankAttention(threads, events, now): AttentionRankItem[]`.
     - `deriveNotificationPlan(review, ledger, now, options?): NotificationPlan`.
   - Helpers: `resolveLoopStorePath()`, `resolveRetentionDays()`.
-- **Integration Stability:** Stable. Requires Node.js >= 22 runtime.
+- **Surface:** Package-root exported surface (`"main": "./dist/index.js"`). Requires Node.js >= 22 runtime.
 
-### 3.5 `@cuenexa-loop/cli` (Internal Reference Application — NOT a Public Library API)
-- **Role:** Command-line executable application, console presenters, and reference orchestration runtime.
-- **Public API Status:** **None.** `@cuenexa-loop/cli` is marked `"private": true` and exposes no library entry points (`main` or `exports`).
-- **Orchestration Reference:**
-  - Files such as `packages/cli/src/persistent-orchestration.ts` (`syncPersistentLoopsWithDetails`), `packages/cli/src/correlation-orchestration.ts` (`detectAndCorrelateSnapshot`), `packages/cli/src/timezone.ts` (`resolveTimeZone`), and `packages/cli/src/watch-runtime.ts` are **reference implementations**.
-  - Host applications should replicate or adapt these orchestration patterns using the four public packages (`contracts`, `bee-adapter`, `loop-engine`, `loop-store`) rather than attempting deep-imports from `@cuenexa-loop/cli`.
+### 3.5 `@cuenexa-loop/cli` (Internal Reference Application — NOT an Exported Library)
+- **Role:** Command-line executable application, human inspection commands, console presenters, and reference orchestration runtime.
+- **Package Status:** Marked `"private": true` with no `"main"` or `"exports"`. Exposes no public library entry points.
+- **Reference Orchestration:**
+  - CLI orchestration modules (such as `packages/cli/src/persistent-orchestration.ts`, `packages/cli/src/correlation-orchestration.ts`, `packages/cli/src/timezone.ts`, and `packages/cli/src/watch-runtime.ts`) serve as **reference implementations**.
+  - Host applications must compose the four library packages (`contracts`, `bee-adapter`, `loop-engine`, `loop-store`) directly, rather than attempting deep imports into `@cuenexa-loop/cli`.
 
 ---
 
@@ -135,129 +146,144 @@ Host applications integrate with CueNexa Loop through a dual-track model: an aut
 
 ### 4.1 Authoritative Historical Track (Mandatory)
 
-The authoritative track is the backbone of all persistent follow-through. It runs periodically, on host launch, or upon user request:
+The authoritative track is the backbone of all persistent follow-through. It runs periodically, on host launch, or upon explicit refresh:
 
-```text
-1. Authenticate:
-   BeeAdapterClient.ensureAuthenticated() -> { timeZone }
+```typescript
+import { BeeAdapterClient, fetchCompleteDetectionSnapshot } from "@cuenexa-loop/bee-adapter";
+import { detectLoopItems, correlateLoopItems } from "@cuenexa-loop/loop-engine";
+import { LoopStore, buildReviewModel } from "@cuenexa-loop/loop-store";
 
-2. Fetch Full Processed History:
-   fetchCompleteDetectionSnapshot(client) -> { snapshot, complete }
+// 1. Authenticate and resolve timezone
+const client = new BeeAdapterClient();
+const auth = await client.ensureAuthenticated();
+const timeZone = auth.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-3. Deterministic Detection:
-   detectLoopItems({
-     conversations: snapshot.conversations,
-     facts: snapshot.facts,
-     todos: snapshot.todos,
-     now,
-     timeZone
-   }) -> detectionResult
+// 2. Fetch full authoritative processed history
+const completeSnapshot = await fetchCompleteDetectionSnapshot(client);
+const now = new Date().toISOString();
 
-4. Deterministic Cross-Conversation Correlation:
-   correlateLoopItems({
-     items: detectionResult.items,
-     conversations: snapshot.conversations,
-     facts: snapshot.facts,
-     todos: snapshot.todos,
-     now,
-     snapshot: { observedAt: now, completeness }
-   }) -> correlationResult
+// 3. Deterministic detection
+const detection = detectLoopItems({
+  conversations: completeSnapshot.snapshot.conversations,
+  facts: completeSnapshot.snapshot.facts,
+  todos: completeSnapshot.snapshot.todos,
+  now,
+  timeZone,
+});
 
-5. Persistent Reconciliation:
-   store.reconcile({
-     loops: correlationResult.loops,
-     observedAt: now,
-     complete
-   }) -> reconcileResult (added, updated, resolved, unchanged)
+// 4. Deterministic cross-conversation correlation
+const completeness = completeSnapshot.warnings.length > 0 || detection.warnings.length > 0
+  ? "partial"
+  : "complete";
 
-6. Review & Attention State:
-   buildReviewModel(store.listThreads(), store.listEvents(), store.listThreadUserStates(), now) -> reviewModel
+const correlation = correlateLoopItems({
+  items: detection.items,
+  conversations: completeSnapshot.snapshot.conversations,
+  facts: completeSnapshot.snapshot.facts,
+  todos: completeSnapshot.snapshot.todos,
+  now,
+  snapshot: { observedAt: now, completeness },
+});
 
-7. Render Host UI / Evaluate Notifications:
-   Display dueNow, needsAttention, waiting items; evaluate deriveNotificationPlan()
+// 5. Reconcile with local SQLite persistent store
+const store = new LoopStore();
+const reconcileResult = store.reconcile({
+  loops: correlation.loops,
+  observedAt: now,
+  complete: completeSnapshot.complete && completeness === "complete",
+});
+
+// 6. Build actionable review model for Host UI
+const reviewModel = buildReviewModel(
+  store.listThreads(),
+  store.listEvents(),
+  store.listThreadUserStates(),
+  now,
+);
 ```
 
 ### 4.2 Provisional Realtime Track (Optional)
 
 The realtime track provides fast, in-flight conversational awareness without durable persistence:
 
-```text
-1. Establish Historical Baseline:
-   Run the Authoritative Historical Track first.
+```typescript
+import { BeeAdapterClient } from "@cuenexa-loop/bee-adapter";
+import { ProvisionalAwareness } from "@cuenexa-loop/loop-engine";
 
-2. Subscribe to Realtime:
-   client.subscribeRealtime({ signal }) -> subscription
+const client = new BeeAdapterClient();
+const provisionalAwareness = new ProvisionalAwareness();
+const timeZone = (await client.ensureAuthenticated()).timeZone
+  ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-3. Ingest Ephemeral Utterances:
-   For each event of type "new-utterance":
-     provisionalAwareness.ingest(event, timeZone) -> { emitted, active }
+// Subscribe to Bee SSE stream via high-level client wrapper
+const subscription = client.subscribeRealtime({
+  onWarning: (warning) => console.warn("Realtime warning:", warning.code),
+});
 
-4. Present Ephemeral Signals:
-   Render clearly labeled "PROVISIONAL — possible commitment/deadline detected".
-   Never persist these signals to database, cache, or external disk.
+// Ingest incoming ephemeral utterances
+for await (const event of subscription.events) {
+  if (event.type === "new-utterance") {
+    const { emitted, active } = provisionalAwareness.ingest(event, timeZone);
+    // Display provisional signals in host UI with explicit PROVISIONAL styling.
+    // NEVER write these signals to SQLite or external durable storage.
+  }
+}
 
-5. Transition on Historical Confirmation:
-   When Bee processes the conversation, trigger the Authoritative Historical Track.
-   Retire the provisional signal via provisionalAwareness.retireConversation(id) or clear().
-   Authoritative reconciliation creates or updates persistent LoopThreads cleanly.
+// When processed history confirms a conversation, retire provisional state:
+provisionalAwareness.retireConversations(new Set([confirmedConversationId]));
 ```
 
 ---
 
 ## 5. Integration decision tree
 
-Before implementing, determine the host application's execution environment.
+Before designing an integration, identify the host application's execution environment.
 
 ```text
-Is the host environment capable of running Node.js 22+ with local subprocess & SQLite access?
-├── YES
-│   ├── Is it a local CLI / daemon / background Node.js process?
-│   │   └── Direct in-process composition of @cuenexa-loop/* packages. (See Section 5.1)
-│   ├── Is it an Electron application?
-│   │   └── Embed in Electron Main Process; expose typed IPC to Renderer. (See Section 5.2)
-│   └── Is it another desktop runtime (macOS Swift, Tauri, Rust, Go)?
-│       └── Run CueNexa Loop CLI or local sidecar Node process via stdio IPC. (See Section 5.3)
-└── NO
-    ├── Is it a browser-only web application?
-    │   └── STOP. Browser cannot access Bee CLI or SQLite. Architecture decision required. (See Section 5.4)
-    ├── Is it a mobile application (iOS / Android)?
-    │   └── STOP. Bee CLI and desktop SQLite do not run on mobile sandboxes. Architecture decision required. (See Section 5.5)
-    └── Is it a multi-tenant cloud or remote server?
-        └── STOP. Violates CueNexa Loop privacy architecture. Prohibited. (See Section 5.6)
+What is the host application runtime?
+├── Node.js 22+ local application / CLI
+│   └── Direct in-process composition of workspace-exported packages. (See Section 5.1)
+├── Electron desktop application (Main Process)
+│   └── Direct composition in Main Process; sanitized IPC to Renderer. (See Section 5.2)
+├── Other desktop runtimes (macOS Swift, Tauri, Rust, Go)
+│   └── STOP. No supported programmatic integration boundary exists. Architecture decision required. (See Section 5.3)
+├── Browser-only web application
+│   └── STOP. Cannot run Bee CLI subprocess or SQLite. Architecture decision required. (See Section 5.4)
+├── Mobile application (iOS / Android)
+│   └── STOP. Mobile sandboxes cannot run desktop Bee CLI. Architecture decision required. (See Section 5.5)
+└── Multi-tenant cloud / remote server
+    └── PROHIBITED. Violates CueNexa local-first privacy model. (See Section 5.6)
 ```
 
-### 5.1 Node.js-Capable Local Application
-- **Fit:** Native, direct support.
-- **Integration:** Directly import `@cuenexa-loop/contracts`, `@cuenexa-loop/bee-adapter`, `@cuenexa-loop/loop-engine`, and `@cuenexa-loop/loop-store`.
-- **Runtime requirements:** Node.js >= 22 (for native `node:sqlite`).
+### 5.1 Node.js 22+ Local Application
+- **Status:** Directly supported for in-process composition when packages are available in the workspace or linked locally.
+- **Runtime requirements:** Node.js >= 22 (for built-in `node:sqlite`).
 
-### 5.2 Electron-Style Desktop Application
-- **Fit:** Excellent.
+### 5.2 Electron Desktop Application
+- **Status:** Supported via Main Process composition when packages are available locally.
 - **Architecture:**
-  - **Main Process (Node.js 22+):** Executes `BeeAdapterClient`, `LoopStore`, and `ProvisionalAwareness`. Owns SQLite file path and Bee subprocess lifecycle.
-  - **Preload Script:** Exposes a safe, context-isolated `ipcRenderer` bridge.
-  - **Renderer Process:** Receives pure structural data (`ReviewModel`, `LoopThread[]`, ephemeral `ProvisionalSignal[]`). Renders UI controls (snooze, acknowledge, pin).
-- **Rule:** Never attempt to open SQLite or invoke Bee CLI from the Renderer process.
+  - **Main Process (Node.js 22+):** Composes `BeeAdapterClient`, `LoopStore`, and `ProvisionalAwareness`. Manages Bee CLI subprocess and SQLite database file.
+  - **Preload / IPC:** Exposes sanitized structural data (`ReviewModel`, `LoopThread[]`, ephemeral `ProvisionalSignal[]`) to Renderer.
+  - **Renderer Process:** Renders UI controls (snooze, acknowledge, pin).
+- **Rule:** Never invoke Bee CLI or access SQLite directly from the Renderer.
 
-### 5.3 Other Desktop Runtimes (macOS Swift/AppKit, Tauri, Go)
-- **Fit:** Supported via local IPC boundary.
-- **Architecture:**
-  - Run the CueNexa Loop CLI as a local subprocess (e.g. `npm run loops:sync`, `npm run loops:review -- --json`, or a packaged Node.js bundle).
-  - Alternatively, run a long-lived local sidecar process communicating over standard input/output (`stdio`) using NDJSON.
-- **Strict Prohibition:** Do **not** spin up an unauthenticated local HTTP server or network port without explicit user authorization and loopback authentication.
+### 5.3 Other Desktop Runtimes (macOS Swift/AppKit, Tauri, Rust, Go)
+- **Status:** **No supported structured integration boundary currently exists in the repository.**
+- **Action:** **STOP and request an architectural decision from the human operator.**
+- **Note:** Potential approaches (such as designing an IPC bridge, subprocess runner, or sidecar protocol) are speculative architectural options and must not be unilaterally implemented by AI agents without human authorization.
 
 ### 5.4 Browser-Only Web Applications
-- **Fit:** Unsupported directly.
+- **Status:** Unsupported directly.
 - **Constraint:** Browsers lack access to local subprocess spawning (`bee` CLI) and the user's local filesystem (`node:sqlite`).
-- **Agent Instruction:** Stop. Do not attempt to mock `bee` credentials or transmit personal conversation data to a cloud backend. Propose an architectural decision to the human operator.
+- **Action:** STOP. Do not attempt to transmit personal conversation data to a cloud backend. Propose an architectural decision to the human operator.
 
 ### 5.5 Mobile Applications (iOS / Android)
-- **Fit:** Unsupported directly.
+- **Status:** Unsupported directly.
 - **Constraint:** The `@beeai/cli` tool is designed for desktop environments with user login sessions. Mobile sandboxing prevents running local desktop CLI subprocesses.
-- **Agent Instruction:** Stop. Do not fabricate a mobile synchronization protocol.
+- **Action:** STOP. Do not fabricate an unapproved mobile sync protocol.
 
 ### 5.6 Multi-Tenant Cloud / Server Applications
-- **Fit:** Strictly prohibited.
+- **Status:** Strictly prohibited.
 - **Constraint:** CueNexa Loop is an individual-user, local-first system. Streaming personal conversations or storing conversational tokens on a shared remote server violates the CueNexa trust and privacy model.
 
 ---
@@ -267,10 +293,10 @@ Is the host environment capable of running Node.js 22+ with local subprocess & S
 AI coding agents integrating CueNexa Loop into a host project must follow this exact step-by-step workflow:
 
 1. **Read Core Contracts:** Read `AGENTS.md`, `docs/STATUS.md`, and this guide (`docs/APP-INTEGRATION-GUIDE.md`).
-2. **Identify Host Runtime:** Determine whether the host environment belongs to Category A, B, C, D, E, or F in the Decision Tree.
-3. **Inspect Actual Exports:** Verify that every imported function, class, and interface exists in the package index files (`@cuenexa-loop/contracts`, `bee-adapter`, `loop-engine`, `loop-store`).
-4. **Identify Integration Surface:** Select the minimal required integration surface (e.g. standalone CLI subprocess vs. direct package composition).
-5. **Establish Privacy Boundaries:** Ensure the host application cannot leak transcripts, persist provisional text, or upload data to remote analytics.
+2. **Identify Host Runtime:** Confirm the host environment is Node.js 22+ capable (Category A or B). If Category C, D, E, or F, STOP and escalate.
+3. **Inspect Actual Exports:** Verify that every imported symbol exists in the package root exports of `@cuenexa-loop/contracts`, `bee-adapter`, `loop-engine`, or `loop-store`.
+4. **No Deep Imports:** Do not import from internal paths (e.g. `@cuenexa-loop/cli/src/...`).
+5. **Establish Privacy Boundaries:** Ensure the host application never leaks transcripts, never persists provisional text, and contains no remote telemetry.
 6. **Implement Authoritative Path First:** Build and verify historical synchronization (`fetchCompleteDetectionSnapshot` -> `detectLoopItems` -> `correlateLoopItems` -> `reconcile`) before touching realtime.
 7. **Add Realtime Acceleration Second:** Implement ephemeral realtime awareness only after authoritative persistence is verified and tested.
 8. **Add Synthetic Automated Tests:** Write unit and integration tests using synthetic fixtures covering normalization, detection, correlation, reconciliation, user state mutations, and continuity across restarts.
@@ -308,7 +334,7 @@ Host developers must have the following environment prepared:
 
 ## 8. Reference CLI validation path
 
-Integrators can use CueNexa Loop's reference CLI commands to verify expected behavior and compare against their host implementation:
+CueNexa Loop provides human validation commands and reference orchestration. Integrators can run these to verify expected behavior:
 
 | Command | Role & Verification Purpose |
 | --- | --- |
@@ -330,6 +356,9 @@ Integrators can use CueNexa Loop's reference CLI commands to verify expected beh
 | `npm run loops:watch` | Runs the reference Phase 4 foreground realtime watcher with live provisional detection and bounded refresh. |
 | `npm run loops:realtime-demo` | Executes an end-to-end synthetic demonstration of provisional awareness without requiring live Bee. |
 
+> [!NOTE]
+> The CLI currently supports only `--include-content` (for opt-in redacted preview) and `--yes` (for reset confirmation). It does **not** provide a `--json` or NDJSON output mode. It is a human validation tool and behavioral reference, not a machine-readable IPC interface.
+
 ---
 
 ## 9. Automated integration testing
@@ -339,7 +368,7 @@ Host integrations must include automated test coverage using synthetic fixtures.
 ### 9.1 Mandatory Test Categories
 - **Provider Normalization:** Test mapping from raw Bee shapes to `LoopConversation`, `LoopFact`, and `LoopTodo`.
 - **Detection Invariants:** Verify that commitments, delegations, follow-ups, and deadlines are extracted accurately without hallucination.
-- **Correlation Grouping:** Verify deterministic clustering across multi-conversation fixtures with fixed thresholds (0.90 threshold, single-linkage guard, complete-linkage clusters).
+- **Correlation Grouping:** Verify deterministic complete-link clustering across multi-conversation fixtures with fixed thresholds (0.90 threshold, complete-linkage clusters, continuation window).
 - **Persistence & Reconciliation:** Verify that new loops create `LoopThread` rows, updated loops emit `due_date_changed` or `state_changed`, and existing threads preserve stable IDs.
 - **Restart Continuity:** Verify that reconciling identical snapshots across store restarts produces `Changes recorded: 0` and preserves thread IDs.
 - **Provisional Isolation:** Verify that provisional signals never write rows to SQLite tables (`loop_threads`, `loop_events`, `loop_thread_user_state`, `loop_notification_deliveries`).
@@ -379,7 +408,7 @@ Live acceptance testing exercises the integration against a real, authenticated 
 9. Restart the host application.
 10. Verify that `Changes recorded: 0` is reported on restart, confirming persistent continuity.
 
-*(Reference: See `docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md` for a complete recorded transcript of authoritative live Bee acceptance.)*
+*(Reference: See [`docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`](audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md) for recorded Phase 4 live acceptance evidence and observed terminal verification.)*
 
 ---
 
@@ -387,8 +416,8 @@ Live acceptance testing exercises the integration against a real, authenticated 
 
 Use this checklist during PR review and independent auditing:
 
-- [ ] **Host Runtime Identified:** Host execution model verified (Node.js, Electron, or sidecar IPC).
-- [ ] **Real Exports Only:** Integration imports only from documented package exports; no deep imports into `@cuenexa-loop/cli` or internal directories.
+- [ ] **Host Runtime Identified:** Host execution model verified as Node.js 22+ compatible (Category A or B).
+- [ ] **Real Exports Only:** Integration imports only from documented package root exports; no deep imports into `@cuenexa-loop/cli` or internal directories.
 - [ ] **Historical Authority Intact:** Processed history is the sole trigger for durable database persistence.
 - [ ] **Realtime Failure-Safe:** Host remains completely functional if realtime stream disconnects or fails.
 - [ ] **Provisional State Ephemeral:** Ephemeral signals exist in memory only; zero writes to SQLite tables from realtime events.
@@ -409,7 +438,7 @@ Use this checklist during PR review and independent auditing:
 ### 12.1 Bee Processing Latency
 - **Symptom:** Spoken conversation ended, but historical sync does not detect the loop.
 - **Cause:** Bee processes transcripts asynchronously on its cloud backend. Conversations are not immediately queryable via `conversations.list()` until processing completes.
-- **Solution:** In the Bee desktop or mobile app, trigger **Process now** on the conversation, or wait 1–2 minutes before triggering authoritative sync.
+- **Solution:** Wait until Bee has processed the conversation. During live testing, manual **Process now** in the Bee app may sometimes be required before new processed history becomes available.
 
 ### 12.2 Realtime Disconnections
 - **Symptom:** SSE stream drops with connection error.
@@ -435,13 +464,13 @@ CueNexa Loop provides deterministic date/time parsing for conversational phrases
 ### Timezone Resolution Hierarchy
 When parsing dates, timezone is resolved in this order:
 1. `LOOP_TIMEZONE` environment variable (if valid IANA identifier, e.g. `"America/New_York"`).
-2. Bee account timezone (from `client.checkAuthentication().timeZone`).
+2. Bee account timezone (`(await client.ensureAuthenticated()).timeZone`).
 3. Host system timezone (`Intl.DateTimeFormat().resolvedOptions().timeZone`).
 
 Host applications should ensure the resolved timezone matches the user's expectations. Never default to UTC.
 
 ### Known Finding: Spoken Time Fidelity
-As documented in `docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`, spoken time-of-day phrases (e.g. `"September 23 at 3 PM"`) may be normalized by Bee into abbreviated transcript text (e.g. `"September 23 at 3 p."`), which can cause downstream date parsers to record midnight UTC (`00:00:00.000Z`) rather than 15:00:00. Host applications should test spoken date/time fidelity end-to-end.
+As documented in [`docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`](audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md), spoken time-of-day phrases (e.g. `"September 23 at 3 PM"`) may be normalized by Bee into abbreviated transcript text (e.g. `"September 23 at 3 p."`), which can cause downstream date parsers to record midnight UTC (`00:00:00.000Z`) rather than 15:00:00. Host applications should test spoken date/time fidelity end-to-end.
 
 ---
 
@@ -452,7 +481,7 @@ Host applications inherit the trust model defined in `docs/PRIVACY.md` and `docs
 - [ ] **Local Storage Path:** Store SQLite database in user-private storage (`~/.cuenexa-loop/cuenexa-loop.sqlite` with `0700` directory permissions).
 - [ ] **No Content in Logs:** Never log raw Bee event payloads, conversation transcriptions, or utterance strings.
 - [ ] **No Cloud Analytics on Loops:** Do not attach Loop titles, member summaries, or user action history to external telemetry services.
-- [ ] **IPC Boundary Security:** In Electron or multi-process architectures, sanitize IPC messages. Renderers must receive only structural data.
+- [ ] **IPC Boundary Security:** In Electron architectures, sanitize IPC messages. Renderers must receive only structural data.
 - [ ] **Subprocess Isolation:** Execute Bee CLI without shell interpolation (`child_process.spawn` with array arguments, never `child_process.exec` with raw string concatenation).
 - [ ] **Redaction Before Truncation:** If a host UI offers an opt-in content preview, run sensitive data redaction (emails, phone numbers, credentials) before truncating text.
 
@@ -462,17 +491,18 @@ Host applications inherit the trust model defined in `docs/PRIVACY.md` and `docs
 
 When assisting a developer with CueNexa Loop integration, an AI agent must **NEVER**:
 
-1. **Never invent imaginary APIs:** Do not fabricate methods like `new CueNexaClient()`, `loopStore.sync()`, or `beeAdapter.connect()`. Use only real package exports.
-2. **Never import CLI internals:** Do not write `import { ... } from "@cuenexa-loop/cli/src/..."` in external applications.
+1. **Never invent imaginary APIs:** Do not fabricate methods like `client.checkAuthentication()`, `provisionalAwareness.clear()`, or `loopStore.sync()`. Use only verified package root exports.
+2. **Never import CLI internals:** Do not write `import { ... } from "@cuenexa-loop/cli/src/..."` in host applications.
 3. **Never persist provisional realtime data:** Do not insert realtime events into SQLite or local caches.
 4. **Never bypass processed history:** Do not create a `LoopThread` directly from realtime utterances.
 5. **Never guess conversation mappings:** Do not match realtime UUIDs to numeric IDs with string distance or heuristics.
-6. **Never create a network daemon:** Do not wrap CueNexa Loop in an unauthenticated HTTP/REST/WebSocket server without explicit architectural approval.
+6. **Never create a network daemon or sidecar protocol without approval:** Do not wrap CueNexa Loop in an unauthenticated HTTP server or invent an NDJSON protocol without explicit human authorization.
 7. **Never introduce external LLMs:** Do not add OpenAI, Anthropic, or external model API calls into the loop detection/correlation pipeline.
 8. **Never transmit Bee data to cloud backends:** Do not upload transcripts or normalized loop data to remote servers.
 9. **Never use real personal data in tests:** Synthetic test fixtures are strictly required.
 10. **Never declare integration complete without testing restart continuity:** Always verify that restarting the host produces `Changes recorded: 0` on an unchanged snapshot.
-11. **Never invent Phase 5 scope:** Keep work bounded to the existing Phase 0–4 architecture.
+11. **Never assume packages are published to public npm:** All packages are private workspace packages.
+12. **Never invent Phase 5 scope:** Keep work bounded to the existing Phase 0–4 architecture.
 
 ---
 
@@ -482,17 +512,17 @@ AI agents completing integration tasks should use this structured handoff templa
 
 ```text
 Host application: [Name and repository path of host app]
-Runtime: [e.g., Node.js 22 desktop daemon / Electron Main Process]
-Integration surface: [Direct package composition of @cuenexa-loop/*]
+Runtime: [e.g., Node.js 22 desktop application / Electron Main Process]
+Integration surface: [Direct in-process composition of workspace-exported packages]
 CueNexa packages used:
 - @cuenexa-loop/contracts
 - @cuenexa-loop/bee-adapter
 - @cuenexa-loop/loop-engine
 - @cuenexa-loop/loop-store
-Historical authority path: [fetchCompleteDetectionSnapshot -> detectLoopItems -> correlateLoopItems -> reconcile]
-Realtime path: [subscribeToBeeRealtime -> ProvisionalAwareness (memory-only)]
-Persistence: [Local SQLite at ~/.cuenexa-loop/cuenexa-loop.sqlite]
-Privacy boundary: [Zero transcripts persisted; default structural UI; IPC sanitized]
+Historical authority path: [fetchCompleteDetectionSnapshot -> detectLoopItems -> correlateLoopItems -> LoopStore.reconcile]
+Realtime path: [BeeAdapterClient.subscribeRealtime -> ProvisionalAwareness (memory-only)]
+Persistence: [Local SQLite at ~/.cuenexa-loop/cuenexa-loop.sqlite via loop-store]
+Privacy boundary: [Zero transcripts persisted; structural UI by default; IPC sanitized]
 Tests added: [Unit tests covering normalization, detection, correlation, and restart continuity]
 Quality gates: [npm run typecheck, npm test, npm run build, npm audit all passed]
 Live acceptance: [Manual Bee acceptance verified with loops:sync and loops:watch]
