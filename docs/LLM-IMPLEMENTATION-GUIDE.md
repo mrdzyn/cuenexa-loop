@@ -493,8 +493,9 @@ Read these files in this order:
 8. [`LOOP-PERSISTENCE.md`](LOOP-PERSISTENCE.md) — Phase 2 continuity and local storage
 9. [`PROACTIVE-FOLLOW-THROUGH.md`](PROACTIVE-FOLLOW-THROUGH.md) — Phase 3 user-state/attention rules
 10. [`AMBIENT-REALTIME-AWARENESS.md`](AMBIENT-REALTIME-AWARENESS.md) — Phase 4 realtime contract
-11. [`FRICTION-LOG.md`](FRICTION-LOG.md) and [`DEVPOST-FRICTION-LOG.md`](DEVPOST-FRICTION-LOG.md) — problems already discovered; do not repeat them
-12. Tests nearest the code you intend to modify
+11. [`APP-INTEGRATION-GUIDE.md`](APP-INTEGRATION-GUIDE.md) — host application integration, programmatic boundaries, and testing guide
+12. [`FRICTION-LOG.md`](FRICTION-LOG.md) and [`DEVPOST-FRICTION-LOG.md`](DEVPOST-FRICTION-LOG.md) — problems already discovered; do not repeat them
+13. Tests nearest the code you intend to modify
 
 Then inspect the implementation. Documentation establishes intent; tests establish expected behavior; current source establishes actual behavior. If they disagree, do not silently choose one — identify the drift and repair it explicitly.
 
@@ -538,3 +539,14 @@ It must preserve this product contract:
 - Privacy is an architectural boundary, not a presentation option.
 
 That is CueNexa Loop.
+
+## 14. Host application integration
+
+When integrating or embedding CueNexa Loop into external applications (Electron apps, menu bar utilities, local desktop tools), consult [`docs/APP-INTEGRATION-GUIDE.md`](APP-INTEGRATION-GUIDE.md).
+
+It defines:
+- package export stability and programmatic surfaces;
+- runtime decision tree and architectural stop conditions;
+- the mandatory authoritative-first integration path;
+- testing requirements using synthetic fixtures;
+- security and privacy rules for host applications.

@@ -134,7 +134,8 @@ Current public/open-source readiness:
 - broader `docs/FRICTION-LOG.md` preserves engineering history;
 - Devpost story, Built With, feedback responses, image captions, and promotional visuals have been prepared;
 - CueNexa Loop Submission Pack PDF has been prepared outside the repository;
-- Phase 4 Live Acceptance Test Guide verified during manual QA.
+- Phase 4 Live Acceptance Test Guide verified during manual QA;
+- [`docs/APP-INTEGRATION-GUIDE.md`](APP-INTEGRATION-GUIDE.md) provides the canonical application-integration and testing guide for host applications.
 
 ## 8. Immediate orchestration queue
 
@@ -142,7 +143,7 @@ Current public/open-source readiness:
 | --- | --- | --- | --- | --- |
 | 1 | Human / QA | Run real Bee Phase 4 `loops:watch` acceptance | CLOSED | Acceptance passed on 2026-09-20; evidence documented in Section 5 |
 | 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Core Phase 4 live acceptance criteria verified; continuity preserved |
-| 3 | Docs / Release | Update status/docs from final acceptance evidence | IN PROGRESS | `docs/phase-4-live-acceptance` |
+| 3 | Docs / Release | Update status/docs from final acceptance evidence | CLOSED | Merged in PR #9 |
 | 4 | Human / Release | Record <3-minute demo and submit Devpost entry | READY | Final demo video + Devpost submission |
 
 Phase 5 remains undefined and unauthorized.
