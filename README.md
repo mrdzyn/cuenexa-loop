@@ -296,6 +296,7 @@ real. Run them yourself after `bee login`; CI never runs any of them (see
 - [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) — what Loop items are, detection philosophy, confidence, dedup, and limitations.
 - [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md) — deterministic scoring, complete-link grouping, lifecycle, timeline, titles, and correlation privacy.
 - [docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md) — Phase 4's authoritative/provisional boundary and acceptance criteria.
+- [docs/APP-INTEGRATION-GUIDE.md](docs/APP-INTEGRATION-GUIDE.md) — application integration and testing guide for host applications.
 - [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) — structured friction notes for future contributors.
 
 ## License

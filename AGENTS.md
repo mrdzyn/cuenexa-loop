@@ -11,7 +11,7 @@ Before changing anything, read in this order:
 1. `AGENTS.md` — operating rules and agent contract.
 2. `docs/STATUS.md` — current source of truth for project state and next work.
 3. `docs/LLM-IMPLEMENTATION-GUIDE.md` — canonical product and implementation orientation.
-4. The task-specific design document(s) referenced by `docs/STATUS.md`.
+4. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
 5. Relevant source code and tests.
 
 Do not begin implementation from chat history, an old agent report, or a stale local branch alone.
@@ -288,6 +288,7 @@ Core documents:
 
 - `docs/STATUS.md` — current state and next authorized work.
 - `docs/LLM-IMPLEMENTATION-GUIDE.md` — fast implementation orientation.
+- `docs/APP-INTEGRATION-GUIDE.md` — canonical application-integration and testing guide.
 - `docs/ARCHITECTURE.md` — architecture and boundaries.
 - `docs/BEE_INTEGRATION.md` — official Bee integration behavior.
 - `docs/LOOP-DETECTION.md` — deterministic LoopItem detection.
