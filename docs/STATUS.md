@@ -39,7 +39,7 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
 | Devpost submission | Final demo + final submission | IN PROGRESS | submission material prepared; live proof recorded |
-| Phase 5 | Future product phase | PLANNED | intentionally undefined; do not invent scope |
+| Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
 
@@ -87,142 +87,27 @@ Phase 3 review/actions/notification policy
 
 Realtime must never directly create, resolve, reopen, delete, or mutate persistent `LoopThread` state.
 
-## 5. Phase 4 live Bee acceptance evidence and results
+## 5. Phase 4 live Bee acceptance summary
 
-**State:** `ACCEPTED / CLOSED`  
-**Acceptance date:** 2026-09-20  
-**Method:** Live Bee conversation recording with foreground `npm run loops:watch -- --include-content` and processed-history handoff.
+**State:** `ACCEPTED / CLOSED` — 2026-09-20  
+**Detailed audit log:** [`docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`](audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md)
 
-### 5.1 Authoritative test sequence and observed evidence
+### Key verified results
 
-1. **Initial authoritative startup:**
-   `npm run loops:watch -- --include-content` successfully performed authoritative startup sync before connecting realtime:
-   ```text
-   CueNexa Loop local sync complete.
-   Threads observed: 1
-   Changes recorded: 1
-   Snapshot completeness: complete
-   Authoritative CueNexa state is ready. Connecting realtime awareness…
-   CueNexa Loop realtime watch ready (foreground). Provisional awareness is not persisted.
-   ```
-   An unsupported realtime event was safely ignored without error:
-   ```text
-   Realtime event ignored: unsupported_event.
-   ```
-
-2. **Live realtime provisional detection — Conversation #1:**
-   While a real Bee conversation was being recorded, CueNexa produced live provisional signals:
-   ```text
-   PROVISIONAL — possible commitment detected
-   Confidence: strong
-   Conversation/session: available
-   Preview: I will record the final demo video on September 23 at 3 p. m.
-   Waiting for processed Bee history before creating a persistent Loop.
-   ```
-   It also surfaced a provisional deadline (`Confidence: tentative`) and a second provisional commitment (`"Once those are complete, I'll do the final submission review."`).  
-   *Result:* Realtime signals stayed strictly provisional/in-memory and did **not** create a persistent `LoopThread` directly.
-
-3. **Processed Bee history — Conversation #1:**
-   After Bee processed Conversation #1, the authoritative historical detection pipeline reported:
-   ```text
-   Source warnings: 0
-   Detection completeness: COMPLETE
-   Total Loop items: 9
-   ```
-   Relevant authoritative commitments detected at confidence 0.90:
-   - `"Record the final demo video at 3 p"` (Evidence: `"I will record the final demo video on September 23 at 3 p."`)
-   - `"Once those are complete, I'll do the final submission review"`  
-   *Result:* No new cross-conversation Demo Video Loop was formed yet because only one relevant conversation existed.
-
-4. **Authoritative correlation baseline:**
-   Prior to the second conversation, authoritative correlation confirmed the single baseline Loop:
-   ```text
-   Loops (1 of 1 shown)
-   Pricing Deck — open, 2 members, confidence 1.00
-   Source warnings: 0, Detection warnings: 0, Correlation warnings: 0
-   Correlation completeness: COMPLETE
-   ```
-   *Result:* Single-conversation items did not prematurely create an erroneous cross-conversation Loop.
-
-5. **Live realtime provisional detection — Conversation #2:**
-   A second distinct Bee conversation followed up on the project work. CueNexa again produced a live:
-   ```text
-   PROVISIONAL — possible commitment detected
-   Confidence: strong
-   Conversation/session: available
-   ```
-   *Result:* Realtime provisional awareness operated reliably across distinct conversations.
-
-6. **Processed-history cross-conversation correlation:**
-   After Bee processed Conversation #2, authoritative correlation ran:
-   ```text
-   CueNexa Loop — Correlation Check
-   Loops (3 of 3 shown)
-
-   Final Submission
-   - open, 2 members, confidence 1.00
-   - members: "Then I'll complete the final submission review...", "Once those are complete, I'll do the final submission review"
-
-   Demo Video
-   - open, 2 members, confidence 1.00
-   - members: "Record the final demo video at 3 p", "After I record the demo video, I'll upload it to YouTube and then add the video link to the dev post submission"
-
-   Pricing Deck
-   - open, 2 members, confidence 1.00
-
-   Source warnings: 0, Detection warnings: 0, Correlation warnings: 0, Correlation completeness: COMPLETE
-   ```
-   *Result:* Independently processed Bee conversations correlated through the deterministic Phase 1 pipeline, not realtime state.
-
-7. **Persistent handoff:**
-   Running `npm run loops:sync` reconciled the correlated Loops into persistent SQLite `LoopThread` entities.  
-   `npm run loops:history` verified exactly four structural events:
-   - `thread_c67c4ba8ece6487ed11a9e95 thread_created` (Demo Video)
-   - `thread_bdbf19a8e3361868b8415ca0 thread_created` (Final Submission)
-   - `thread_4073bef917a12d0292908542 due_date_changed` (Pricing Deck)
-   - `thread_4073bef917a12d0292908542 thread_created` (Pricing Deck)  
-   *Result:* Durable state was created exclusively via historical reconciliation. No provisional event wrote to SQLite.
-
-8. **Watcher restart / persistent continuity:**
-   Restarting `npm run loops:watch -- --include-content` confirmed state persistence without duplicate generation:
-   ```text
-   CueNexa Loop local sync complete.
-   Threads observed: 3
-   Changes recorded: 0
-   Snapshot completeness: complete
-   ```
-   Review state reflected:
-   - `DUE NOW`: Pricing Deck (`thread_4073bef917a12d0292908542`)
-   - `NEEDS ATTENTION`: Final Submission (`thread_bdbf19a8e3361868b8415ca0`), Demo Video (`thread_c67c4ba8ece6487ed11a9e95`)  
-   *Result:* Persistent thread IDs were preserved, and `Changes recorded: 0` verified that reconnecting watch did not duplicate state.
-
-9. **Final history verification:**
-   Final `npm run loops:history` still showed exactly the same four structural events. No duplicate `thread_created` events were generated.
-
-### 5.2 Formal acceptance conclusion
-
-Phase 4 live acceptance is **ACCEPTED / CLOSED** as of 2026-09-20.
-
-The live Bee exercise verified all Phase 4 invariants:
-- foreground Bee realtime connectivity;
-- provisional deterministic commitment/deadline detection;
-- realtime state remained strictly memory-only;
-- processed Bee history remained the sole authority;
-- processing delay did not imply resolution or deletion;
-- independent processed conversations correlated correctly;
-- authoritative Loops became persistent LoopThreads only through the historical Phase 1–3 path;
-- realtime signals did not create duplicate durable threads;
-- watcher restart preserved thread identity with `Changes recorded: 0`;
-- persistent history remained purely structural;
-- default architecture and privacy boundaries were preserved.
+- **Core acceptance path:** Real Bee live conversation (`loops:watch`) produced provisional in-memory awareness, safely handed off to processed Bee history, and reconciled through the authoritative Phase 1–3 pipeline.
+- **Cross-conversation correlation:** Two distinct processed conversations correlated at confidence 1.00 into two new Loops (`Final Submission` and `Demo Video`).
+- **Authoritative persistence handoff:** `npm run loops:sync` created exactly two new persistent `LoopThread` entities from historical correlation. No provisional signal produced a persistent `LoopThread` or additional structural history event during live acceptance. The implementation contract and automated tests enforce the broader no-provisional-persistence invariant.
+- **Watcher restart continuity:** Restarting `loops:watch` observed 3 threads with `Changes recorded: 0`, preserving thread identities (`thread_4073bef917a12d0292908542`, `thread_bdbf19a8e3361868b8415ca0`, `thread_c67c4ba8ece6487ed11a9e95`).
+- **Structural history integrity:** `npm run loops:history` remained exactly 4 structural events across watch restarts.
+- **Verdict:** Core Phase 4 live acceptance criteria passed.
 
 ## 6. Known findings and post-acceptance backlog
 
 ### 6.1 Date/time fidelity (non-blocking follow-up)
 
-- **Observed:** The spoken commitment was `"September 23 at 3 PM"`. In Bee processed history, the transcript evidence appeared as approximately `"September 23 at 3 p."`. The resulting durable due instant recorded in CueNexa was `2026-09-22T16:00:00.000Z`, which corresponds to September 23 at 00:00 UTC+8 (midnight) rather than 15:00 (3 PM).
-- **Assessment:** This is a non-blocking date/time parsing fidelity item, not an architectural defect.
-- **Action:** Tracked for post-acceptance investigation to determine whether the time loss originates from Bee transcription normalization, CueNexa date/time parsing, or their interaction.
+- **Observed:** Spoken commitment `"September 23 at 3 PM"` appeared in Bee processed history as `"September 23 at 3 p."`, resulting in CueNexa due instant `2026-09-22T16:00:00.000Z` (midnight UTC+8 instead of 15:00).
+- **Assessment:** Non-blocking parsing fidelity item; does not block Phase 4 acceptance.
+- **Action:** Tracked for post-acceptance investigation (transcription normalization vs parsing interaction).
 
 ### 6.2 Bee integration realities
 

@@ -646,7 +646,7 @@ Do not redesign the repository around a developer machine's newer Node version.
 
 ## 18. Live manual acceptance
 
-Live manual acceptance was conducted on 2026-09-20 against live Bee and verified all criteria without creating duplicate durable state. See `docs/STATUS.md` for the authoritative acceptance ledger.
+Live manual acceptance was conducted on 2026-09-20 against live Bee and core criteria passed without creating duplicate durable state. See [`docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`](audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md) and [`docs/STATUS.md`](STATUS.md) for the authoritative acceptance ledger.
 
 ### Acceptance procedure and checklist
 
