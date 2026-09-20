@@ -9,10 +9,11 @@ It is intentionally stable. Current project state, active work, blockers, and ne
 Before changing anything, read in this order:
 
 1. `AGENTS.md` — operating rules and agent contract.
-2. `docs/STATUS.md` — current source of truth for project state and next work.
-3. `docs/LLM-IMPLEMENTATION-GUIDE.md` — canonical product and implementation orientation.
-4. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
-5. Relevant source code and tests.
+2. `docs/PROJECT-MEMORY.md` — durable cross-chat/project knowledge and locked context.
+3. `docs/STATUS.md` — current source of truth for project state and next work.
+4. `docs/LLM-IMPLEMENTATION-GUIDE.md` — canonical product and implementation orientation.
+5. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
+6. Relevant source code and tests.
 
 Do not begin implementation from chat history, an old agent report, or a stale local branch alone.
 
@@ -27,8 +28,9 @@ When instructions conflict, use this order:
 3. `docs/STATUS.md`.
 4. Locked architecture/design documents.
 5. Existing tests and implementation behavior.
-6. General repository documentation / README.
-7. Agent assumptions.
+6. `docs/PROJECT-MEMORY.md` for durable context that is not superseded by the sources above.
+7. General repository documentation / README.
+8. Agent assumptions.
 
 Never silently override a higher-authority rule.
 
@@ -143,6 +145,24 @@ Status statements must be factual and evidence-based.
 Never mark work complete because an agent says it is complete. Record the verified commit/PR/CI/acceptance evidence.
 
 Do not turn `STATUS.md` into a changelog. Keep it concise and current; historical detail belongs in design docs, PRs, or the project update log.
+
+## 6.1 Project memory discipline
+
+`docs/PROJECT-MEMORY.md` is the durable cross-chat/project memory for CueNexa Loop.
+
+Use it for stable information that future humans and AI agents should recover from the repository rather than from conversational/model memory: locked product choices, architecture decisions, important lessons, integration constraints, launch decisions, and durable rationale.
+
+When the user says **"Update the project memory and status docs from this chat"**:
+
+1. read `AGENTS.md`, `docs/PROJECT-MEMORY.md`, and `docs/STATUS.md`;
+2. verify relevant repository state before writing;
+3. extract only durable project knowledge from the current chat into `docs/PROJECT-MEMORY.md`;
+4. update only current operational state/blockers/next actions in `docs/STATUS.md`;
+5. do not use model memory or an old chat summary as the authoritative source when repository evidence exists;
+6. do not turn project memory into a transcript or changelog;
+7. use the normal branch/PR workflow unless the user explicitly authorizes a direct documentation update.
+
+If `PROJECT-MEMORY.md` conflicts with current code, tests, `STATUS.md`, or locked design docs, those verified sources win and the memory file must be corrected.
 
 ## 7. CueNexa Loop non-negotiable architecture invariants
 
@@ -286,6 +306,7 @@ Primary packages:
 
 Core documents:
 
+- `docs/PROJECT-MEMORY.md` — durable cross-chat/project knowledge and stable decisions.
 - `docs/STATUS.md` — current state and next authorized work.
 - `docs/LLM-IMPLEMENTATION-GUIDE.md` — fast implementation orientation.
 - `docs/APP-INTEGRATION-GUIDE.md` — canonical application-integration and testing guide.
@@ -299,4 +320,4 @@ Core documents:
 - `docs/PRIVACY.md` / `docs/SECURITY.md` — trust boundaries.
 - `docs/FRICTION-LOG.md` — engineering friction history.
 
-When in doubt: **read `docs/STATUS.md`, verify the actual repository head, preserve the invariants, and keep the change bounded.**
+When in doubt: **read `docs/PROJECT-MEMORY.md` and `docs/STATUS.md`, verify the actual repository head, preserve the invariants, and keep the change bounded.**
