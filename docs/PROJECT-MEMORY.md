@@ -11,9 +11,11 @@
 **Last curated:** 2026-09-20  
 **Repository:** `mrdzyn/cuenexa-loop`
 
-## 1. How humans and AI agents should use this file
+## 1. How the owner, orchestrator, and coding agents should use this file
 
-Read this document near the beginning of a **fresh or low-context CueNexa Loop session**, or whenever architecture, product, integration, release, launch, or historical rationale matters. It is intentionally **not required for every bounded coding task**, so routine agents do not spend tokens reloading durable context they do not need.
+The primary audience for this file is the **human project owner and project orchestrator**. It exists to preserve durable repository-backed continuity across chats, archived threads, and handoffs without depending on conversational/model memory.
+
+Coding agents are **not expected to read this file routinely**. For narrow implementation work, `AGENTS.md`, `docs/STATUS.md`, task-specific documentation, and relevant code/tests are the default context. A coding agent may consult `docs/PROJECT-MEMORY.md` when explicitly directed by the user/orchestrator or when durable historical rationale is genuinely necessary for the assigned task.
 
 When the user says:
 
@@ -198,7 +200,7 @@ Current integration boundaries:
 The repository uses a standardized multi-agent workflow:
 
 - `AGENTS.md` = stable operating contract;
-- `docs/PROJECT-MEMORY.md` = durable cross-chat/project knowledge;
+- `docs/PROJECT-MEMORY.md` = durable owner/orchestrator continuity across chats; optional for coding agents unless explicitly needed;
 - `docs/STATUS.md` = current operational control plane;
 - task-specific docs = canonical detailed design/acceptance rules;
 - implementation happens on bounded branches;
@@ -262,4 +264,4 @@ When updating it:
 
 ---
 
-**Agent reminder:** Recover durable project context from this file when the task actually needs it. For narrow implementation work, `AGENTS.md`, `docs/STATUS.md`, task-specific docs, and relevant code/tests are sufficient. Use conversational/model memory only as a pointer to what should be verified, never as the source of truth when repository evidence is available.
+**Owner/orchestrator reminder:** Use this file as the durable repository-backed continuity record across chats and archived threads. **Coding-agent reminder:** This file is optional unless the user/orchestrator explicitly directs you to read it or historical rationale is necessary for the assigned task. For narrow implementation work, `AGENTS.md`, `docs/STATUS.md`, task-specific docs, and relevant code/tests are sufficient. Use conversational/model memory only as a pointer to what should be verified, never as the source of truth when repository evidence is available.
