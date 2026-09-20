@@ -13,7 +13,7 @@
 
 ## 1. How humans and AI agents should use this file
 
-Read this document near the beginning of every new CueNexa Loop work session so durable context is recovered from the repository rather than from conversational/model memory.
+Read this document near the beginning of a **fresh or low-context CueNexa Loop session**, or whenever architecture, product, integration, release, launch, or historical rationale matters. It is intentionally **not required for every bounded coding task**, so routine agents do not spend tokens reloading durable context they do not need.
 
 When the user says:
 
@@ -262,4 +262,4 @@ When updating it:
 
 ---
 
-**Agent reminder:** Recover project context from this repository first. Use conversational/model memory only as a pointer to what should be verified, never as the source of truth when repository evidence is available.
+**Agent reminder:** Recover durable project context from this file when the task actually needs it. For narrow implementation work, `AGENTS.md`, `docs/STATUS.md`, task-specific docs, and relevant code/tests are sufficient. Use conversational/model memory only as a pointer to what should be verified, never as the source of truth when repository evidence is available.
