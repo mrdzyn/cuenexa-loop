@@ -4,11 +4,11 @@
 >
 > Keep this file concise, factual, and current. Update it after material implementation, review, merge, blocker, or acceptance milestones.
 
-**Last updated:** 2026-09-16  
+**Last updated:** 2026-09-20  
 **Repository:** `mrdzyn/cuenexa-loop`  
 **Default branch:** `main`  
-**Current project state:** Phase 4 engineering merged; live Bee acceptance pending  
-**Current authorized objective:** Complete Phase 4 live acceptance, then finalize the Devpost demo/submission  
+**Current project state:** Phase 4 engineering merged and live Bee acceptance PASSED / CLOSED  
+**Current authorized objective:** Finalize the <3-minute Devpost demo and submission  
 **Phase 5:** Not defined or authorized
 
 ## 1. Baseline
@@ -23,6 +23,7 @@ Documentation/submission/orchestration commits landed after the Phase 4 code mer
 - `580f65be58cd2b595456c6d3040c22b3019f600e` — canonical LLM implementation guide.
 - `0c2d658a6df6bc601df12585bf4483c88e2be8ff` — initial coding-agent entry point.
 - `85221047987784836226b12aca59ea463b549a65` — standardized multi-agent `AGENTS.md`.
+- `9d9135ed847f443f465372256e52a006a39468d2` — multi-agent project status control plane.
 
 Because this file itself may be updated frequently, agents must verify the actual current repository head rather than treating a SHA in this document as a permanent `main` pointer.
 
@@ -35,10 +36,10 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 1B | Deterministic cross-conversation correlation | CLOSED | `c147e002bd97635e0042aadac0fdd4be3ac550c0` |
 | Phase 2 | Persistent local follow-through | CLOSED | `7d5d6a2ea27e07ff640ac33408eadb9df6c673f1` |
 | Phase 3 | Proactive follow-through actions/review/notifications | CLOSED | `feb503646c830050f67fc484dd7c2f3eb953ba66` |
-| Phase 4 | Ambient realtime awareness | MERGED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
-| Phase 4 live acceptance | Real Bee realtime → processed-history handoff | READY FOR ACCEPTANCE | manual test still required |
-| Devpost submission | Final demo + final submission | IN PROGRESS | submission material prepared; final live proof pending |
-| Phase 5 | Future product phase | PLANNED | intentionally undefined; do not invent scope |
+| Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
+| Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
+| Devpost submission | Final demo + final submission | IN PROGRESS | submission material prepared; live proof recorded |
+| Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
 
@@ -86,66 +87,38 @@ Phase 3 review/actions/notification policy
 
 Realtime must never directly create, resolve, reopen, delete, or mutate persistent `LoopThread` state.
 
-## 5. Current active work
+## 5. Phase 4 live Bee acceptance summary
 
-### P4-LIVE — Phase 4 live Bee acceptance
+**State:** `ACCEPTED / CLOSED` — 2026-09-20  
+**Detailed audit log:** [`docs/audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md`](audit/PHASE-4-LIVE-ACCEPTANCE-2026-09-20.md)
 
-**Owner:** Human operator + QA/audit agent  
-**State:** `READY FOR ACCEPTANCE`  
-**Code changes expected:** None unless live testing reveals a defect  
-**Primary command:**
+### Key verified results
 
-```bash
-npm run loops:watch
-```
+- **Core acceptance path:** Real Bee live conversation (`loops:watch`) produced provisional in-memory awareness, safely handed off to processed Bee history, and reconciled through the authoritative Phase 1–3 pipeline.
+- **Cross-conversation correlation:** Two distinct processed conversations correlated at confidence 1.00 into two new Loops (`Final Submission` and `Demo Video`).
+- **Authoritative persistence handoff:** `npm run loops:sync` created exactly two new persistent `LoopThread` entities from historical correlation. No provisional signal produced a persistent `LoopThread` or additional structural history event during live acceptance. The implementation contract and automated tests enforce the broader no-provisional-persistence invariant.
+- **Watcher restart continuity:** Restarting `loops:watch` observed 3 threads with `Changes recorded: 0`, preserving thread identities (`thread_4073bef917a12d0292908542`, `thread_bdbf19a8e3361868b8415ca0`, `thread_c67c4ba8ece6487ed11a9e95`).
+- **Structural history integrity:** `npm run loops:history` remained exactly 4 structural events across watch restarts.
+- **Verdict:** Core Phase 4 live acceptance criteria passed.
 
-### Test sequence
+## 6. Known findings and post-acceptance backlog
 
-1. Confirm Bee authentication/connectivity.
-2. Start `npm run loops:watch` before recording.
-3. Record a real Bee conversation containing a clear commitment/follow-up/deadline.
-4. Confirm CueNexa shows a clearly labeled **PROVISIONAL** signal during the conversation.
-5. End the conversation and allow Bee to process it. Use Bee's manual **Process now** action if necessary.
-6. Trigger or allow the bounded authoritative refresh.
-7. Confirm processed history produces/reuses the correct persistent LoopThread through the existing Phase 1–3 path.
-8. Run `npm run loops:review` and `npm run loops:history`.
-9. Restart `loops:watch` and verify persistent continuity without creating a duplicate durable thread.
-10. Verify default output remains privacy-safe/content-free.
+### 6.1 Date/time fidelity (non-blocking follow-up)
 
-### Required acceptance evidence
+- **Observed:** Spoken commitment `"September 23 at 3 PM"` appeared in Bee processed history as `"September 23 at 3 p."`, resulting in CueNexa due instant `2026-09-22T16:00:00.000Z` (midnight UTC+8 instead of 15:00).
+- **Assessment:** Non-blocking parsing fidelity item; does not block Phase 4 acceptance.
+- **Action:** Tracked for post-acceptance investigation (transcription normalization vs parsing interaction).
 
-- realtime connection established;
-- one or more `PROVISIONAL` follow-through signals observed;
-- absence/delay in processed history does **not** resolve/delete work;
-- authoritative refresh succeeds after Bee processing;
-- persistent LoopThread is created or reused only through processed history;
-- no duplicate durable thread caused by the provisional signal;
-- no duplicate notification delivery caused by realtime observation;
-- `loops:review` reflects the authoritative thread correctly;
-- `loops:history` contains structural authoritative events only;
-- watcher restart preserves persistent continuity;
-- no raw realtime transcript/provisional payload is persisted.
+### 6.2 Bee integration realities
 
-### Safety note
-
-**Do not run:**
-
-```bash
-npm run loops:reset -- --yes
-```
-
-unless the orchestrator explicitly decides to wipe the local test state.
-
-## 6. Current known Bee integration realities
-
-These are expected behaviors/constraints, not automatically defects:
+These are expected platform behaviors/constraints:
 
 - Bee processed conversation history may appear after a processing delay.
 - Manual **Process now** may be needed during live testing before new history becomes available.
 - Bee realtime `conversation_uuid` and processed-history numeric conversation `id` are separate namespaces.
 - CueNexa maps them only when Bee explicitly supplies both identifiers in one payload; mappings are bounded and memory-only.
 - `@beeai/cli` 0.7.3 `streamJson()` exposes parsed `data:` JSON but not the original SSE `event:` / `id:` metadata.
-- realtime delivery is treated as lossy/at-most-once; authoritative processed-history refresh repairs gaps.
+- Realtime delivery is treated as lossy/at-most-once; authoritative processed-history refresh repairs gaps.
 
 See `docs/BEE_INTEGRATION.md`, `docs/AMBIENT-REALTIME-AWARENESS.md`, and `docs/DEVPOST-FRICTION-LOG.md`.
 
@@ -161,50 +134,37 @@ Current public/open-source readiness:
 - broader `docs/FRICTION-LOG.md` preserves engineering history;
 - Devpost story, Built With, feedback responses, image captions, and promotional visuals have been prepared;
 - CueNexa Loop Submission Pack PDF has been prepared outside the repository;
-- Phase 4 Live Acceptance Test Guide has been prepared for manual QA.
+- Phase 4 Live Acceptance Test Guide verified during manual QA.
 
 ## 8. Immediate orchestration queue
 
 | Order | Role | Task | State | Output expected |
 | --- | --- | --- | --- | --- |
-| 1 | Human / QA | Run real Bee Phase 4 `loops:watch` acceptance | READY | terminal evidence + observed behavior |
-| 2 | Auditor | Review acceptance evidence against Phase 4 contract | WAITING | PASS / blockers / remediation scope |
-| 3 | Implementer | Only if live acceptance exposes a real defect | WAITING | bounded fix branch + tests + PR |
-| 4 | Reviewer | Independently audit any remediation PR | WAITING | verified verdict at exact head SHA |
-| 5 | Docs / Release | Update status/docs from final acceptance evidence | WAITING | finalized docs/submission wording |
-| 6 | Human / Release | Record <3-minute demo and submit Devpost entry | WAITING | final submission |
+| 1 | Human / QA | Run real Bee Phase 4 `loops:watch` acceptance | CLOSED | Acceptance passed on 2026-09-20; evidence documented in Section 5 |
+| 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Core Phase 4 live acceptance criteria verified; continuity preserved |
+| 3 | Docs / Release | Update status/docs from final acceptance evidence | IN PROGRESS | `docs/phase-4-live-acceptance` |
+| 4 | Human / Release | Record <3-minute demo and submit Devpost entry | READY | Final demo video + Devpost submission |
 
-Do not start a speculative Phase 5 while P4-LIVE is unresolved.
+Phase 5 remains undefined and unauthorized.
 
-## 9. If live acceptance fails
+## 9. Troubleshooting and verification archive
 
-Classify the failure before editing code:
+If live verification needs to be re-checked or diagnosed:
 
 ### A. Bee/platform timing or processing delay
-
-Examples: new conversation not processed yet; realtime gap; manual Process now required.
-
-Action: retry using the documented bounded/manual path. Do not weaken authority rules.
+Action: retry using the documented bounded/manual path (`bee status`, manual Process now). Do not weaken authority rules.
 
 ### B. Test/environment/configuration issue
+Action: confirm authenticated Bee session (`bee status`), verify Node version (>=22), and rebuild (`npm run build`).
 
-Examples: unauthenticated CLI, wrong Node version, stale local build.
-
-Action: correct environment and rerun acceptance before changing product code.
-
-### C. Actual CueNexa defect
-
-Action:
-
-1. record the exact reproduction;
-2. update this file to `BLOCKED` with concise evidence;
-3. create a bounded `fix/<scope>` branch from the authorized baseline;
-4. add a regression test using synthetic fixtures;
-5. run all quality gates;
-6. open a PR;
-7. independently audit the exact PR head;
-8. merge only after explicit authorization;
-9. rerun the failed live acceptance scenario.
+### C. Defect escalation protocol
+If a regression is identified in future maintenance:
+1. record exact reproduction;
+2. update status to `BLOCKED` with concise evidence;
+3. create bounded `fix/<scope>` branch from authorized baseline;
+4. add synthetic regression test;
+5. run all quality gates (`npm run typecheck`, `npm test`, `npm run build`, `npm audit`);
+6. open PR, independently audit exact head SHA, and merge only after explicit authorization.
 
 ## 10. Standard commands
 
@@ -238,13 +198,10 @@ Use `--include-content` only when explicit redacted/truncated content inspection
 
 ## 11. Next decision gate
 
-After Phase 4 live acceptance passes:
+After Devpost demo and submission are complete:
 
-1. mark P4-LIVE `ACCEPTED` / Phase 4 `CLOSED`;
-2. update this file with the acceptance evidence/date;
-3. finalize and record the Devpost demo;
-4. complete submission;
-5. only then define Phase 5 based on observed product needs.
+1. finalize public release tag/notes if desired;
+2. only then define Phase 5 based on observed product needs.
 
 Potential future directions such as desktop/tray UX, richer timeline visualization, broader CueNexa integration, native local notifications, or optional AI over confirmed LoopThreads are **ideas, not authorized Phase 5 scope**.
 
