@@ -76,8 +76,9 @@ CueNexa Loop is structured as an npm workspaces monorepo. Integrators must under
 - **Role:** Pure TypeScript types and runtime Zod schemas defining provider-independent domain models.
 - **Exported APIs:**
   - Historical domain types: `LoopConversation`, `LoopFact`, `LoopTodo`, `Page<T>`, `NormalizationWarning`.
-  - Ephemeral realtime types: `EphemeralRealtimeEvent`, `EphemeralRealtimeUtterance`, `EphemeralRealtimeConversation`, `EphemeralRealtimeWarning`.
-  - Schemas: `LoopConversationSchema`, `EphemeralRealtimeEventSchema`, etc.
+  - Ephemeral realtime types: `EphemeralRealtimeEvent`, `EphemeralRealtimeUtterance`, `EphemeralRealtimeConversationState`.
+  - Schemas: `LoopConversationSchema`, `EphemeralRealtimeEventSchema`, `EphemeralRealtimeUtteranceSchema`, `EphemeralRealtimeConversationStateSchema`, etc.
+- **Realtime Warnings:** Realtime transport warnings belong to `@cuenexa-loop/bee-adapter` as `BeeRealtimeWarning` (not `@cuenexa-loop/contracts`).
 - **Surface:** Package-root exported surface (`"main": "./dist/index.js"`, `"types": "./dist/index.d.ts"`).
 
 ### 3.2 `@cuenexa-loop/bee-adapter` (Workspace-Exported Library Surface)
@@ -94,8 +95,9 @@ CueNexa Loop is structured as an npm workspaces monorepo. Integrators must under
     - `fetchBeeSnapshot(client)`: Lightweight single-page fetch (list records only, empty utterances). Used for connectivity checks.
     - `fetchDetectionSnapshot(client, options)`: Hydrates full conversation detail for first page.
     - `fetchCompleteDetectionSnapshot(client, options)`: Full, bounded pagination across all processable pages with hydration and deduplication. **This is the required authoritative synchronization entry point.**
-  - Lower-level realtime helper:
+  - Lower-level realtime helper and bridge:
     - `subscribeToBeeRealtime(client, options, identities)`: Package-root helper operating against the underlying Bee SSE client surface.
+    - `BeeRealtimeWarning`, `BeeRealtimeWarningCode`: Warning models emitted during realtime stream decoding and SSE handling.
     - `BeeConversationIdentityBridge`: Bounded memory-only map between realtime UUIDs and historical numeric IDs.
   - Error classes: `BeeError`, `BeeCliUnavailableError`, `BeeAuthenticationError`, `BeeMalformedResponseError`, `classifyBeeError`.
 - **Surface:** Package-root exported surface (`"main": "./dist/index.js"`).
@@ -103,8 +105,8 @@ CueNexa Loop is structured as an npm workspaces monorepo. Integrators must under
 ### 3.3 `@cuenexa-loop/loop-engine` (Workspace-Exported Library Surface)
 - **Role:** Pure, deterministic detection, correlation, and provisional awareness logic. Has no I/O, database, network, or Bee-specific dependency.
 - **Exported APIs:**
-  - Detection: `detectLoopItems(snapshot, options): LoopDetectionResult`.
-  - Correlation: `correlateLoopItems(items, options): LoopCorrelationResult`.
+  - Detection: `detectLoopItems(input: LoopDetectionInput): LoopDetectionResult` (where `LoopDetectionInput` accepts `{ conversations, facts, todos, now, timeZone }`).
+  - Correlation: `correlateLoopItems(input: LoopCorrelationInput): LoopCorrelationResult` (where `LoopCorrelationInput` accepts `{ items, conversations, facts, todos, now, snapshot }`).
   - Primitives: `extractDeadline()`, `scoreCorrelationPair()`, `deriveLoopLifecycle()`, `deriveLoopTitle()`, `buildLoopTimeline()`.
   - Ephemeral Awareness:
     - `ProvisionalAwareness`: In-memory state machine for foreground realtime awareness.
@@ -122,12 +124,13 @@ CueNexa Loop is structured as an npm workspaces monorepo. Integrators must under
     - `constructor(options?: { path?: string; retentionDays?: number })`.
     - `reconcile(input: ReconcileInput): ReconcileResult`: The core reconciliation engine. Reconciles authoritative snapshot Loops against existing threads, detects changes, manages retention, and records structural history events.
     - Inspection: `listThreads()`, `getThread(id)`, `listEvents(limit)`, `getThreadUserState(id)`, `listThreadUserStates()`.
-    - User Actions: `acknowledgeThread(id, at)`, `snoozeThread(id, until, now)`, `pinThread(id, at)`, `dismissThread(id, at)`, `restoreThread(id, at)`.
-    - Notification Ledger: `listNotificationDeliveries(limit)`, `recordNotificationDeliveries(inputs, deliveredAt)`.
+    - User Actions: `acknowledgeThread(id, at)`, `snoozeThread(id, until, now)`, `unsnoozeThread(id, at)`, `pinThread(id, at)`, `unpinThread(id, at)`, `dismissThread(id, at)`, `restoreThread(id, at)`.
+    - Notification Ledger: `listNotificationDeliveries(limit)`, `hasNotificationDelivery(threadId, type, triggerKey)`, `recordNotificationDeliveries(inputs, deliveredAt)`.
+    - Retention: `purgeResolved(now): number`.
   - Review & Planning Primitives:
     - `buildReviewModel(threads, events, userStates, now): ReviewModel` (groups into `dueNow`, `needsAttention`, `waiting`, `snoozed`, `recentlyResolved`).
-    - `rankAttention(threads, events, now): AttentionRankItem[]`.
-    - `deriveNotificationPlan(review, ledger, now, options?): NotificationPlan`.
+    - `rankAttention(threads, events, now): AttentionItem[]`.
+    - `planNotifications(threads, events, userStates, deliveries, now): NotificationPlan`.
   - Helpers: `resolveLoopStorePath()`, `resolveRetentionDays()`.
 - **Surface:** Package-root exported surface (`"main": "./dist/index.js"`). Requires Node.js >= 22 runtime.
 
@@ -153,10 +156,24 @@ import { BeeAdapterClient, fetchCompleteDetectionSnapshot } from "@cuenexa-loop/
 import { detectLoopItems, correlateLoopItems } from "@cuenexa-loop/loop-engine";
 import { LoopStore, buildReviewModel } from "@cuenexa-loop/loop-store";
 
+// Host-owned helper implementing the 3-tier timezone hierarchy without CLI imports:
+function resolveHostTimezone(beeTimezone: string | null): string {
+  const envTz = process.env.LOOP_TIMEZONE?.trim();
+  if (envTz) {
+    try {
+      Intl.DateTimeFormat(undefined, { timeZone: envTz });
+      return envTz;
+    } catch {
+      // Fall back if env var is an invalid IANA identifier
+    }
+  }
+  return beeTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
 // 1. Authenticate and resolve timezone
 const client = new BeeAdapterClient();
 const auth = await client.ensureAuthenticated();
-const timeZone = auth.timeZone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+const timeZone = resolveHostTimezone(auth.timeZone);
 
 // 2. Fetch full authoritative processed history
 const completeSnapshot = await fetchCompleteDetectionSnapshot(client);
@@ -172,9 +189,10 @@ const detection = detectLoopItems({
 });
 
 // 4. Deterministic cross-conversation correlation
-const completeness = completeSnapshot.warnings.length > 0 || detection.warnings.length > 0
-  ? "partial"
-  : "complete";
+const completeness =
+  completeSnapshot.snapshot.warnings.length > 0 || detection.warnings.length > 0
+    ? "partial"
+    : "complete";
 
 const correlation = correlateLoopItems({
   items: detection.items,
@@ -212,8 +230,8 @@ import { ProvisionalAwareness } from "@cuenexa-loop/loop-engine";
 
 const client = new BeeAdapterClient();
 const provisionalAwareness = new ProvisionalAwareness();
-const timeZone = (await client.ensureAuthenticated()).timeZone
-  ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+const auth = await client.ensureAuthenticated();
+const timeZone = resolveHostTimezone(auth.timeZone);
 
 // Subscribe to Bee SSE stream via high-level client wrapper
 const subscription = client.subscribeRealtime({
@@ -229,8 +247,16 @@ for await (const event of subscription.events) {
   }
 }
 
-// When processed history confirms a conversation, retire provisional state:
-provisionalAwareness.retireConversations(new Set([confirmedConversationId]));
+// When processed history confirms conversations, retire provisional state using detected conversation IDs:
+const detectedConversationIds = new Set(
+  detection.items
+    .map((item) => item.source.conversationId)
+    .filter((id): id is string => id !== null),
+);
+provisionalAwareness.retireConversations(detectedConversationIds);
+
+// If Bee explicitly supplies a dual session/conversation identity mapping within a single payload:
+// provisionalAwareness.resolveConversationIdentity(sessionId, conversationId);
 ```
 
 ---
@@ -437,7 +463,7 @@ Use this checklist during PR review and independent auditing:
 
 ### 12.1 Bee Processing Latency
 - **Symptom:** Spoken conversation ended, but historical sync does not detect the loop.
-- **Cause:** Bee processes transcripts asynchronously on its cloud backend. Conversations are not immediately queryable via `conversations.list()` until processing completes.
+- **Cause:** Bee processed conversation history may not become available immediately after recording. Conversations are not queryable via `conversations.list()` until processing completes.
 - **Solution:** Wait until Bee has processed the conversation. During live testing, manual **Process now** in the Bee app may sometimes be required before new processed history becomes available.
 
 ### 12.2 Realtime Disconnections
@@ -447,7 +473,7 @@ Use this checklist during PR review and independent auditing:
 
 ### 12.3 Unsupported Realtime Events
 - **Symptom:** Console logs `Realtime event ignored: unsupported_event`.
-- **Cause:** Bee emits experimental or UI-only event types over the SSE stream that are not part of CueNexa Loop's contract.
+- **Cause:** The incoming realtime payload did not normalize to one of CueNexa Loop’s supported realtime event shapes.
 - **Solution:** Safely ignore. Non-utterance events do not compromise provisional awareness.
 
 ### 12.4 SQLite Lock Errors
