@@ -157,17 +157,24 @@ import { detectLoopItems, correlateLoopItems } from "@cuenexa-loop/loop-engine";
 import { LoopStore, buildReviewModel } from "@cuenexa-loop/loop-store";
 
 // Host-owned helper implementing the 3-tier timezone hierarchy without CLI imports:
-function resolveHostTimezone(beeTimezone: string | null): string {
-  const envTz = process.env.LOOP_TIMEZONE?.trim();
-  if (envTz) {
-    try {
-      Intl.DateTimeFormat(undefined, { timeZone: envTz });
-      return envTz;
-    } catch {
-      // Fall back if env var is an invalid IANA identifier
-    }
+function isValidTimeZone(candidate: string): boolean {
+  try {
+    new Intl.DateTimeFormat(undefined, { timeZone: candidate });
+    return true;
+  } catch {
+    return false;
   }
-  return beeTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+function resolveHostTimezone(beeTimezone: string | null): string {
+  const override = process.env.LOOP_TIMEZONE?.trim();
+  if (override && isValidTimeZone(override)) {
+    return override;
+  }
+  if (beeTimezone && isValidTimeZone(beeTimezone)) {
+    return beeTimezone;
+  }
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 // 1. Authenticate and resolve timezone
@@ -204,11 +211,15 @@ const correlation = correlateLoopItems({
 });
 
 // 5. Reconcile with local SQLite persistent store
+const complete =
+  completeSnapshot.complete &&
+  correlation.snapshot.completeness === "complete";
+
 const store = new LoopStore();
 const reconcileResult = store.reconcile({
   loops: correlation.loops,
   observedAt: now,
-  complete: completeSnapshot.complete && completeness === "complete",
+  complete,
 });
 
 // 6. Build actionable review model for Host UI
@@ -240,7 +251,7 @@ const subscription = client.subscribeRealtime({
 
 // Ingest incoming ephemeral utterances
 for await (const event of subscription.events) {
-  if (event.type === "new-utterance") {
+  if (event.kind === "utterance") {
     const { emitted, active } = provisionalAwareness.ingest(event, timeZone);
     // Display provisional signals in host UI with explicit PROVISIONAL styling.
     // NEVER write these signals to SQLite or external durable storage.
