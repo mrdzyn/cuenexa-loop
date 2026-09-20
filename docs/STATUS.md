@@ -129,6 +129,7 @@ Current public/open-source readiness:
 - repository is public;
 - MIT license is present;
 - `AGENTS.md` provides the multi-agent operating contract;
+- `docs/PROJECT-MEMORY.md` provides durable repository-backed context for future chats and agents;
 - `docs/LLM-IMPLEMENTATION-GUIDE.md` provides a canonical implementation/reproduction guide;
 - `docs/DEVPOST-FRICTION-LOG.md` provides submission-ready Bee developer friction feedback;
 - broader `docs/FRICTION-LOG.md` preserves engineering history;
@@ -208,4 +209,4 @@ Potential future directions such as desktop/tray UX, richer timeline visualizati
 
 ---
 
-**Agent reminder:** Before starting any task, verify the actual GitHub/local head, read `AGENTS.md`, and confirm the task appears in or is explicitly authorized beyond this status file.
+**Agent reminder:** Before starting any task, verify the actual GitHub/local head, read `AGENTS.md`, `docs/PROJECT-MEMORY.md`, and this status file, then confirm the task appears in or is explicitly authorized beyond this status file.
