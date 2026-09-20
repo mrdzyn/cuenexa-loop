@@ -9,11 +9,17 @@ It is intentionally stable. Current project state, active work, blockers, and ne
 Before changing anything, read in this order:
 
 1. `AGENTS.md` — operating rules and agent contract.
-2. `docs/PROJECT-MEMORY.md` — durable cross-chat/project knowledge and locked context.
-3. `docs/STATUS.md` — current source of truth for project state and next work.
-4. `docs/LLM-IMPLEMENTATION-GUIDE.md` — canonical product and implementation orientation.
-5. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
-6. Relevant source code and tests.
+2. `docs/STATUS.md` — current source of truth for project state and next work.
+3. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
+4. Relevant source code and tests.
+
+Read `docs/PROJECT-MEMORY.md` **conditionally**, not for every bounded task. Read it when:
+- starting a fresh or low-context agent/session;
+- architecture, product, integration, release, launch, or historical rationale matters;
+- a prior durable decision needs to be recovered or verified;
+- the user explicitly asks to update project memory/status.
+
+Read `docs/LLM-IMPLEMENTATION-GUIDE.md` when broader product/implementation orientation is needed, especially for new agents or cross-cutting work.
 
 Do not begin implementation from chat history, an old agent report, or a stale local branch alone.
 
@@ -320,4 +326,4 @@ Core documents:
 - `docs/PRIVACY.md` / `docs/SECURITY.md` — trust boundaries.
 - `docs/FRICTION-LOG.md` — engineering friction history.
 
-When in doubt: **read `docs/PROJECT-MEMORY.md` and `docs/STATUS.md`, verify the actual repository head, preserve the invariants, and keep the change bounded.**
+When in doubt: **read `docs/STATUS.md`, verify the actual repository head, and read `docs/PROJECT-MEMORY.md` only when durable context or rationale is relevant. Preserve the invariants and keep the change bounded.**
