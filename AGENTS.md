@@ -9,11 +9,15 @@ It is intentionally stable. Current project state, active work, blockers, and ne
 Before changing anything, read in this order:
 
 1. `AGENTS.md` — operating rules and agent contract.
-2. `docs/PROJECT-MEMORY.md` — durable cross-chat/project knowledge and locked context.
-3. `docs/STATUS.md` — current source of truth for project state and next work.
-4. `docs/LLM-IMPLEMENTATION-GUIDE.md` — canonical product and implementation orientation.
-5. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
-6. Relevant source code and tests.
+2. `docs/STATUS.md` — current source of truth for project state and next work.
+3. The task-specific design document(s) referenced by `docs/STATUS.md` (for host application embedding or integration tasks, read `docs/APP-INTEGRATION-GUIDE.md` before designing the host integration).
+4. Relevant source code and tests.
+
+`docs/PROJECT-MEMORY.md` is **not part of the default coding-agent context**. It is primarily the repository-backed continuity record used by the human project owner and project orchestrator across chats and archived threads. Coding agents may consult it when explicitly directed by the user/orchestrator or when durable historical rationale is genuinely necessary for the assigned task.
+
+If a coding/documentation agent is specifically assigned to update project memory/status, it must read `AGENTS.md`, `docs/PROJECT-MEMORY.md`, and `docs/STATUS.md` before making that update.
+
+Read `docs/LLM-IMPLEMENTATION-GUIDE.md` when broader product/implementation orientation is needed, especially for new agents or cross-cutting work.
 
 Do not begin implementation from chat history, an old agent report, or a stale local branch alone.
 
@@ -148,9 +152,11 @@ Do not turn `STATUS.md` into a changelog. Keep it concise and current; historica
 
 ## 6.1 Project memory discipline
 
-`docs/PROJECT-MEMORY.md` is the durable cross-chat/project memory for CueNexa Loop.
+`docs/PROJECT-MEMORY.md` is the durable cross-chat/project continuity record for CueNexa Loop, primarily maintained for the human project owner and project orchestrator.
 
-Use it for stable information that future humans and AI agents should recover from the repository rather than from conversational/model memory: locked product choices, architecture decisions, important lessons, integration constraints, launch decisions, and durable rationale.
+Coding agents are not expected to read it routinely. They may consult it only when explicitly directed or when durable historical rationale is necessary for their assigned task.
+
+Use it for stable information worth carrying across chats: locked product choices, architecture decisions, important lessons, integration constraints, launch decisions, and durable rationale.
 
 When the user says **"Update the project memory and status docs from this chat"**:
 
@@ -320,4 +326,4 @@ Core documents:
 - `docs/PRIVACY.md` / `docs/SECURITY.md` — trust boundaries.
 - `docs/FRICTION-LOG.md` — engineering friction history.
 
-When in doubt: **read `docs/PROJECT-MEMORY.md` and `docs/STATUS.md`, verify the actual repository head, preserve the invariants, and keep the change bounded.**
+When in doubt: **read `docs/STATUS.md`, verify the actual repository head, preserve the invariants, and keep the change bounded. `docs/PROJECT-MEMORY.md` is optional for coding agents unless explicitly directed or historical rationale is required.**
