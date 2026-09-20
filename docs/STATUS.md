@@ -141,7 +141,7 @@ Current public/open-source readiness:
 | Order | Role | Task | State | Output expected |
 | --- | --- | --- | --- | --- |
 | 1 | Human / QA | Run real Bee Phase 4 `loops:watch` acceptance | CLOSED | Acceptance passed on 2026-09-20; evidence documented in Section 5 |
-| 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Verified all Phase 4 invariants and continuity preserved |
+| 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Core Phase 4 live acceptance criteria verified; continuity preserved |
 | 3 | Docs / Release | Update status/docs from final acceptance evidence | IN PROGRESS | `docs/phase-4-live-acceptance` |
 | 4 | Human / Release | Record <3-minute demo and submit Devpost entry | READY | Final demo video + Devpost submission |
 
