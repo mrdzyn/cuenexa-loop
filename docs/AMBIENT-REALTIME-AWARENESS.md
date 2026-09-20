@@ -2,7 +2,7 @@
 
 ## Status
 
-**Design specification for Phase 4.**
+**Implementation merged; live Bee acceptance ACCEPTED / CLOSED (2026-09-20).**
 
 Phase 4 begins only after the completed Phase 1–3 pipeline:
 
@@ -646,9 +646,9 @@ Do not redesign the repository around a developer machine's newer Node version.
 
 ## 18. Live manual acceptance
 
-After merge, perform live testing without resetting the real database.
+Live manual acceptance was conducted on 2026-09-20 against live Bee and verified all criteria without creating duplicate durable state. See `docs/STATUS.md` for the authoritative acceptance ledger.
 
-### Existing state safety
+### Acceptance procedure and checklist
 
 1. Pull `main`.
 2. Keep the existing Phase 3 SQLite database.
