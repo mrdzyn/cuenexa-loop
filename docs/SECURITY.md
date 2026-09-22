@@ -184,7 +184,14 @@ Every fixture used by `npm test` is synthetic — see `docs/PRIVACY.md`
 
 ## Reporting a vulnerability
 
-This is an early-stage open-source project (Phase 1) with no
-production deployment. If you find a security issue, please open a GitHub issue on
-this repository describing the concern; avoid including any real Bee data
-in the report.
+Please **do not open a public issue, discussion, or pull request containing vulnerability details**.
+
+Use this repository's private GitHub vulnerability-reporting / Security Advisory flow when available:
+
+1. Open the repository's **Security** tab.
+2. Choose **Report a vulnerability**.
+3. Provide the minimum information needed to reproduce and assess the issue.
+
+If private vulnerability reporting is not available, contact the repository owner privately using a contact method published on their GitHub profile. Do not disclose exploit details publicly while establishing contact.
+
+Do not include real Bee credentials, session tokens, API keys, raw conversation content, or other personal Bee-derived data in the report. Prefer synthetic fixtures and redacted examples.
