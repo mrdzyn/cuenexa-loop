@@ -40,6 +40,8 @@ export interface CueNexaServiceDependencies {
   readonly awareness?: ProvisionalAwareness;
   readonly onProvisionalChange?: (snapshot: ProvisionalSnapshotDto) => void;
   readonly now?: () => string;
+  readonly schedule?: (callback: () => void, delayMs: number) => unknown;
+  readonly cancelSchedule?: (handle: unknown) => void;
   readonly env?: NodeJS.ProcessEnv;
   readonly systemTimeZone?: () => string;
 }
@@ -54,6 +56,8 @@ export class CueNexaService {
   private readonly injectedAwareness: boolean;
   private readonly onProvisionalChange?: (snapshot: ProvisionalSnapshotDto) => void;
   private readonly now: () => string;
+  private readonly schedule: (callback: () => void, delayMs: number) => unknown;
+  private readonly cancelSchedule: (handle: unknown) => void;
   private readonly env: NodeJS.ProcessEnv;
   private readonly systemTimeZone: () => string;
   private lastSnapshot: ReviewSnapshotDto | null = null;
@@ -65,6 +69,8 @@ export class CueNexaService {
   private awareness: ProvisionalAwareness;
   private subscription: BeeRealtimeSubscription | null = null;
   private pumpGeneration = 0;
+  private realtimeStarting = false;
+  private expiryTimer: unknown = null;
   private provisionalHealth: ProvisionalSnapshotDto["health"] = "off";
   private provisionalWarning: BeeRealtimeWarning | null = null;
 
@@ -79,6 +85,8 @@ export class CueNexaService {
     this.awareness = dependencies.awareness ?? new ProvisionalAwareness();
     this.onProvisionalChange = dependencies.onProvisionalChange;
     this.now = dependencies.now ?? (() => new Date().toISOString());
+    this.schedule = dependencies.schedule ?? ((callback, delayMs) => setTimeout(callback, delayMs));
+    this.cancelSchedule = dependencies.cancelSchedule ?? ((handle) => clearTimeout(handle as NodeJS.Timeout));
     this.env = dependencies.env ?? process.env;
     this.systemTimeZone = dependencies.systemTimeZone ?? (() => Intl.DateTimeFormat().resolvedOptions().timeZone);
   }
@@ -196,9 +204,11 @@ export class CueNexaService {
   }
 
   async startRealtime(): Promise<ProvisionalSnapshotDto> {
-    if (this.subscription) {
+    if (this.subscription || this.realtimeStarting) {
       return this.getProvisional();
     }
+    this.realtimeStarting = true;
+    const generation = ++this.pumpGeneration;
     this.provisionalHealth = "connecting";
     this.provisionalWarning = null;
     if (!this.injectedAwareness) {
@@ -207,25 +217,38 @@ export class CueNexaService {
     this.emitProvisional();
     try {
       const auth = await this.client.ensureAuthenticated();
+      if (generation !== this.pumpGeneration) {
+        return this.getProvisional();
+      }
       const timeZone = resolveHostTimeZone({
         beeTimeZone: auth.timeZone,
         env: this.env,
         systemTimeZone: this.systemTimeZone,
       });
       this.lastTimeZone = timeZone;
-      const generation = ++this.pumpGeneration;
-      this.subscription = this.subscribeRealtimeFn({
+      const subscription = this.subscribeRealtimeFn({
         now: this.now,
         onWarning: (warning) => {
+          if (generation !== this.pumpGeneration) return;
           this.provisionalWarning = warning;
           this.emitProvisional();
         },
       });
+      if (generation !== this.pumpGeneration) {
+        subscription.close();
+        return this.getProvisional();
+      }
+      this.subscription = subscription;
+      this.realtimeStarting = false;
       this.provisionalHealth = "active";
       this.emitProvisional();
-      void this.pumpRealtime(generation, timeZone);
+      void this.pumpRealtime(generation, timeZone, subscription);
       return this.getProvisional();
     } catch {
+      if (generation !== this.pumpGeneration) {
+        return this.getProvisional();
+      }
+      this.realtimeStarting = false;
       this.provisionalHealth = "disconnected";
       this.subscription = null;
       this.emitProvisional();
@@ -234,7 +257,9 @@ export class CueNexaService {
   }
 
   stopRealtime(): ProvisionalSnapshotDto {
+    this.realtimeStarting = false;
     this.closeSubscription();
+    this.clearExpiryTimer();
     this.provisionalHealth = "off";
     this.provisionalWarning = null;
     if (!this.injectedAwareness) {
@@ -258,24 +283,30 @@ export class CueNexaService {
     this.stopRealtime();
   }
 
-  private async pumpRealtime(generation: number, timeZone: string): Promise<void> {
-    const subscription = this.subscription;
-    if (!subscription) return;
+  private async pumpRealtime(
+    generation: number,
+    timeZone: string,
+    subscription: BeeRealtimeSubscription,
+  ): Promise<void> {
     try {
       for await (const event of subscription.events) {
         if (generation !== this.pumpGeneration) return;
         this.handleRealtimeEvent(event, timeZone);
       }
-      if (generation === this.pumpGeneration && this.subscription) {
-        this.provisionalHealth = "disconnected";
-        this.emitProvisional();
-      }
+      this.terminateCurrentStream(generation, subscription);
     } catch {
-      if (generation === this.pumpGeneration) {
-        this.provisionalHealth = "disconnected";
-        this.emitProvisional();
-      }
+      this.terminateCurrentStream(generation, subscription);
     }
+  }
+
+  private terminateCurrentStream(generation: number, subscription: BeeRealtimeSubscription): void {
+    if (generation !== this.pumpGeneration) return;
+    if (this.subscription !== subscription) return;
+    subscription.close();
+    this.subscription = null;
+    this.realtimeStarting = false;
+    this.provisionalHealth = "disconnected";
+    this.emitProvisional();
   }
 
   private handleRealtimeEvent(event: EphemeralRealtimeEvent, timeZone: string): void {
@@ -294,10 +325,45 @@ export class CueNexaService {
     this.pumpGeneration += 1;
     this.subscription?.close();
     this.subscription = null;
+    this.realtimeStarting = false;
   }
 
   private emitProvisional(): void {
     this.onProvisionalChange?.(this.getProvisional());
+    this.scheduleExpiry();
+  }
+
+  private scheduleExpiry(): void {
+    this.clearExpiryTimer();
+    if (this.provisionalHealth === "off") return;
+    const signals = this.awareness.list();
+    if (signals.length === 0) return;
+    const nowMs = Date.parse(this.now());
+    if (!Number.isFinite(nowMs)) return;
+    let earliest = Number.POSITIVE_INFINITY;
+    for (const signal of signals) {
+      const expiresAt = Date.parse(signal.expiresAt);
+      if (Number.isFinite(expiresAt) && expiresAt < earliest) earliest = expiresAt;
+    }
+    if (!Number.isFinite(earliest)) return;
+    const delayMs = Math.max(0, earliest - nowMs);
+    const generation = this.pumpGeneration;
+    this.expiryTimer = this.schedule(() => {
+      if (generation !== this.pumpGeneration) return;
+      this.expiryTimer = null;
+      const removed = this.awareness.pruneExpired(this.now());
+      if (removed > 0) {
+        this.emitProvisional();
+        return;
+      }
+      this.scheduleExpiry();
+    }, delayMs);
+  }
+
+  private clearExpiryTimer(): void {
+    if (this.expiryTimer === null) return;
+    this.cancelSchedule(this.expiryTimer);
+    this.expiryTimer = null;
   }
 
   private degradedReview(
