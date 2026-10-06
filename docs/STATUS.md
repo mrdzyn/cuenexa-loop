@@ -4,12 +4,13 @@
 >
 > Keep this file concise, factual, and current. Update it after material implementation, review, merge, blocker, or acceptance milestones.
 
-**Last updated:** 2026-09-20  
+**Last updated:** 2026-10-06  
 **Repository:** `mrdzyn/cuenexa-loop`  
 **Default branch:** `main`  
-**Current project state:** Phase 4 engineering merged and live Bee acceptance PASSED / CLOSED  
-**Current authorized objective:** Finalize the <3-minute Devpost demo and submission  
-**Phase 5:** Not defined or authorized
+**Current project state:** Phase 4 engineering and live Bee acceptance remain ACCEPTED / CLOSED  
+**Hackathon submission:** SUBMITTED / CONTEST ENTRY ACTIVE (demo video uploaded; entry officially in Amazon Developer Build, Ship, Shape Hackathon)  
+**Current authorized objective:** P4-R1 — Electron Local Integration Reference  
+**Phase 5:** NOT DEFINED / NOT AUTHORIZED
 
 ## 1. Baseline
 
@@ -38,7 +39,8 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 3 | Proactive follow-through actions/review/notifications | CLOSED | `feb503646c830050f67fc484dd7c2f3eb953ba66` |
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
-| Devpost submission | Final demo + final submission | IN PROGRESS | submission material prepared; live proof recorded |
+| Devpost submission | Record demo + submit Devpost entry | SUBMITTED / CLOSED | demo video uploaded; project officially entered as active contest entry in Amazon Developer Build, Ship, Shape Hackathon |
+| P4-R1 | Electron Local Integration Reference | PLANNED | Provide executable reference implementation showing Node.js 22+ / Electron host integration of CueNexa Loop (authoritative processed history path) |
 | Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
@@ -87,6 +89,56 @@ Phase 3 review/actions/notification policy
 
 Realtime must never directly create, resolve, reopen, delete, or mutate persistent `LoopThread` state.
 
+### P4-R1 — Electron Local Integration Reference (authorized post-submission work)
+
+The reference project will live under `examples/electron-local-reference/`.
+
+Authoritative integration flow (P4-R1A first):
+
+```text
+Bee processed history
+        ↓
+@cuenexa-loop/bee-adapter
+        ↓
+Electron Main Process
+        ↓
+detectLoopItems
+        ↓
+correlateLoopItems
+        ↓
+LoopStore.reconcile
+        ↓
+buildReviewModel
+        ↓
+sanitized IPC
+        ↓
+Electron Renderer
+```
+
+Future provisional realtime (P4-R1B only after P4-R1A accepted):
+
+```text
+Bee realtime
+→ ProvisionalAwareness
+→ memory-only PROVISIONAL UI
+→ never directly persisted
+```
+
+P4-R1 invariants (non-negotiable):
+- processed Bee history remains authoritative for persistence
+- realtime remains provisional and memory-only
+- Electron Main Process owns Bee access and `LoopStore`
+- Renderer receives sanitized derived DTOs only
+- no raw transcripts persisted
+- no direct Renderer access to Bee or SQLite
+- no external LLM
+- no cloud API
+- no background daemon
+- no new persistence schema
+- no guessing realtime UUID ↔ historical numeric-ID mappings
+- no deep imports from `@cuenexa-loop/cli`
+- P4-R1 is **not** Phase 5
+
 ## 5. Phase 4 live Bee acceptance summary
 
 **State:** `ACCEPTED / CLOSED` — 2026-09-20  
@@ -133,8 +185,9 @@ Current public/open-source readiness:
 - `docs/LLM-IMPLEMENTATION-GUIDE.md` provides a canonical implementation/reproduction guide;
 - `docs/DEVPOST-FRICTION-LOG.md` provides submission-ready Bee developer friction feedback;
 - broader `docs/FRICTION-LOG.md` preserves engineering history;
-- Devpost story, Built With, feedback responses, image captions, and promotional visuals have been prepared;
-- CueNexa Loop Submission Pack PDF has been prepared outside the repository;
+- Devpost story, Built With, feedback responses, image captions, and promotional visuals prepared;
+- CueNexa Loop Submission Pack PDF prepared outside the repository;
+- Hackathon demo video uploaded and entry officially submitted/active (2026-10-06);
 - Phase 4 Live Acceptance Test Guide verified during manual QA;
 - [`docs/APP-INTEGRATION-GUIDE.md`](APP-INTEGRATION-GUIDE.md) provides the canonical application-integration and testing guide for host applications.
 
@@ -145,9 +198,13 @@ Current public/open-source readiness:
 | 1 | Human / QA | Run real Bee Phase 4 `loops:watch` acceptance | CLOSED | Acceptance passed on 2026-09-20; evidence documented in Section 5 |
 | 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Core Phase 4 live acceptance criteria verified; continuity preserved |
 | 3 | Docs / Release | Update status/docs from final acceptance evidence | CLOSED | Merged in PR #9 |
-| 4 | Human / Release | Record <3-minute demo and submit Devpost entry | READY | Final demo video + Devpost submission |
+| 4 | Human / Release | Record <3-minute demo and submit Devpost entry | CLOSED | Demo video uploaded; entry submitted and active in hackathon |
+| 5 | Docs / Orchestrator | Define P4-R1 bounded implementation contract | PLANNED | P4-R1 scope, architecture summary, and acceptance criteria in STATUS.md |
+| 6 | Implementer | P4-R1A Electron authoritative integration reference | PLANNED | `examples/electron-local-reference/` authoritative historical path only (no realtime yet) |
+| 7 | Auditor | Independently audit exact P4-R1A PR head | PLANNED | Verify head SHA, invariants, no deep imports, synthetic tests |
+| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PLANNED | Authoritative sync + restart continuity verified against live Bee |
 
-Phase 5 remains undefined and unauthorized.
+Phase 5 remains undefined and unauthorized. Do not authorize realtime (P4-R1B) until P4-R1A authoritative reference is accepted.
 
 ## 9. Troubleshooting and verification archive
 
@@ -200,12 +257,15 @@ Use `--include-content` only when explicit redacted/truncated content inspection
 
 ## 11. Next decision gate
 
-After Devpost demo and submission are complete:
+Post-submission sequence (P4-R1 is **not** Phase 5):
 
-1. finalize public release tag/notes if desired;
-2. only then define Phase 5 based on observed product needs.
+1. Define and implement P4-R1A authoritative Electron reference (historical sync path only).
+2. Independently audit the exact PR head (no implementation changes by auditor).
+3. Perform human/live Bee acceptance on the reference app (if required).
+4. Only after P4-R1A authoritative integration is accepted, authorize P4-R1B (provisional realtime integration in the reference).
+5. Keep Phase 5 undefined until explicitly scoped by the project owner.
 
-Potential future directions such as desktop/tray UX, richer timeline visualization, broader CueNexa integration, native local notifications, or optional AI over confirmed LoopThreads are **ideas, not authorized Phase 5 scope**.
+P4-R1 must preserve all architecture/privacy invariants. No new persistence schema. No realtime data directly persisted. No external LLM/cloud. No deep CLI imports.
 
 ---
 
