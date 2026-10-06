@@ -5,6 +5,7 @@
     { "path": "packages/bee-adapter" },
     { "path": "packages/loop-engine" },
     { "path": "packages/loop-store" },
-    { "path": "packages/cli" }
+    { "path": "packages/cli" },
+    { "path": "examples/electron-local-reference" }
   ]
 }

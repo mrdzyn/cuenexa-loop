@@ -40,7 +40,7 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
 | Devpost submission | Record demo + submit Devpost entry | SUBMITTED / CLOSED | demo video uploaded; project officially entered as active contest entry in Amazon Developer Build, Ship, Shape Hackathon |
-| P4-R1 | Electron Local Integration Reference | PLANNED | Provide executable reference implementation showing Node.js 22+ / Electron host integration of CueNexa Loop (authoritative processed history path) |
+| P4-R1 | Electron Local Integration Reference | IN PROGRESS | Spec: `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md`. P4-R1A implementation ready for review; P4-R1B not authorized |
 | Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
@@ -199,10 +199,10 @@ Current public/open-source readiness:
 | 2 | Auditor | Review acceptance evidence against Phase 4 contract | CLOSED | Core Phase 4 live acceptance criteria verified; continuity preserved |
 | 3 | Docs / Release | Update status/docs from final acceptance evidence | CLOSED | Merged in PR #9 |
 | 4 | Human / Release | Record <3-minute demo and submit Devpost entry | CLOSED | Demo video uploaded; entry submitted and active in hackathon |
-| 5 | Docs / Orchestrator | Define P4-R1 bounded implementation contract | PLANNED | P4-R1 scope, architecture summary, and acceptance criteria in STATUS.md |
-| 6 | Implementer | P4-R1A Electron authoritative integration reference | PLANNED | `examples/electron-local-reference/` authoritative historical path only (no realtime yet) |
-| 7 | Auditor | Independently audit exact P4-R1A PR head | PLANNED | Verify head SHA, invariants, no deep imports, synthetic tests |
-| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PLANNED | Authoritative sync + restart continuity verified against live Bee |
+| 5 | Docs / Orchestrator | Define P4-R1 bounded implementation contract | CLOSED | `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md` |
+| 6 | Implementer | P4-R1A Electron authoritative integration reference | READY FOR REVIEW | `examples/electron-local-reference/` authoritative historical path only (no realtime) |
+| 7 | Auditor | Independently audit exact P4-R1A PR head | PENDING | Verify head SHA, invariants, no deep imports, synthetic tests |
+| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PENDING | Authoritative sync + restart continuity verified against live Bee |
 
 Phase 5 remains undefined and unauthorized. Do not authorize realtime (P4-R1B) until P4-R1A authoritative reference is accepted.
 

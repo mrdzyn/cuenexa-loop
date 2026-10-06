@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "dist",
+    "rootDir": "src",
+    "lib": ["ES2022"]
+  },
+  "include": ["src/main", "src/shared"],
+  "references": [
+    { "path": "../../packages/contracts" },
+    { "path": "../../packages/bee-adapter" },
+    { "path": "../../packages/loop-engine" },
+    { "path": "../../packages/loop-store" }
+  ]
+}
