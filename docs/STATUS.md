@@ -201,8 +201,8 @@ Current public/open-source readiness:
 | 4 | Human / Release | Record <3-minute demo and submit Devpost entry | CLOSED | Demo video uploaded; entry submitted and active in hackathon |
 | 5 | Docs / Orchestrator | Define P4-R1 bounded implementation contract | CLOSED | `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md` |
 | 6 | Implementer | P4-R1A Electron authoritative integration reference | READY FOR REVIEW | `examples/electron-local-reference/` authoritative historical path only (no realtime) |
-| 7 | Auditor | Independently audit exact P4-R1A PR head | PENDING | Verify head SHA, invariants, no deep imports, synthetic tests |
-| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PENDING | Authoritative sync + restart continuity verified against live Bee |
+| 7 | Auditor | Independently audit exact P4-R1A PR head | PLANNED | Verify head SHA, invariants, no deep imports, synthetic tests |
+| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PLANNED | Authoritative sync + restart continuity verified against live Bee |
 
 Phase 5 remains undefined and unauthorized. Do not authorize realtime (P4-R1B) until P4-R1A authoritative reference is accepted.
 

@@ -1,12 +1,15 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow } from "electron";
 import { BeeAdapterClient } from "@cuenexa-loop/bee-adapter";
 import { LoopStore } from "@cuenexa-loop/loop-store";
 import { CueNexaService, resolveElectronStorePath } from "./cuenexa-service.js";
 import { registerCueNexaIpc } from "./ipc.js";
+import { isTrustedRendererNavigation, resolveTrustedRendererUrl } from "./renderer-trust.js";
 
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
+const rendererHtmlPath = join(moduleDirectory, "../renderer/index.html");
+const trustedRendererUrl = resolveTrustedRendererUrl(rendererHtmlPath);
 
 function createService(): CueNexaService {
   const storePath = resolveElectronStorePath({
@@ -35,30 +38,28 @@ function createWindow(): BrowserWindow {
     },
   });
 
-  window.webContents.setWindowOpenHandler(({ url }) => {
-    if (url.startsWith("https://") || url.startsWith("http://")) {
-      void shell.openExternal(url);
-    }
-    return { action: "deny" };
-  });
-
+  window.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
   window.webContents.on("will-navigate", (event, url) => {
-    const allowed = url.startsWith("file:");
-    if (!allowed) {
+    if (!isTrustedRendererNavigation(url, trustedRendererUrl)) {
       event.preventDefault();
     }
   });
 
-  void window.loadFile(join(moduleDirectory, "../renderer/index.html"));
+  void window.loadFile(rendererHtmlPath);
   return window;
 }
 
 app.on("web-contents-created", (_event, contents) => {
   contents.setWindowOpenHandler(() => ({ action: "deny" }));
+  contents.on("will-navigate", (event, url) => {
+    if (!isTrustedRendererNavigation(url, trustedRendererUrl)) {
+      event.preventDefault();
+    }
+  });
 });
 
 void app.whenReady().then(() => {
-  registerCueNexaIpc(createService());
+  registerCueNexaIpc(createService(), trustedRendererUrl);
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

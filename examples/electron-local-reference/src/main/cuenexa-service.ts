@@ -149,25 +149,37 @@ export class CueNexaService {
     } catch (error) {
       const mapped = classifyHostError(error);
       this.lastError = mapped;
-      const timeZone = this.lastTimeZone ?? this.systemTimeZone();
-      return {
-        ...emptyReviewSnapshot(now, timeZone),
-        errorCode: mapped.code,
-        errorMessage: mapped.message,
-      };
+      this.lastComplete = false;
+      const degraded = this.degradedReview(now, mapped);
+      this.lastSnapshot = degraded;
+      return degraded;
     }
   }
 
   getReview(): ReviewSnapshotDto {
+    if (this.lastError) {
+      return this.degradedReview(this.now(), this.lastError);
+    }
     if (this.lastSnapshot) {
       return this.lastSnapshot;
     }
+    return emptyReviewSnapshot(this.now(), this.lastTimeZone ?? this.systemTimeZone());
+  }
+
+  private degradedReview(
+    now: string,
+    error: { code: AppErrorCode; message: string },
+  ): ReviewSnapshotDto {
     const timeZone = this.lastTimeZone ?? this.systemTimeZone();
-    const snapshot = emptyReviewSnapshot(this.now(), timeZone);
-    if (this.lastError) {
-      return { ...snapshot, errorCode: this.lastError.code, errorMessage: this.lastError.message };
-    }
-    return snapshot;
+    const previous = this.lastSnapshot ?? emptyReviewSnapshot(now, timeZone);
+    return {
+      ...previous,
+      generatedAt: now,
+      complete: false,
+      changeCount: 0,
+      errorCode: error.code,
+      errorMessage: error.message,
+    };
   }
 
   private statusDto(partial: {

@@ -252,6 +252,43 @@ describe("CueNexaService authoritative path", () => {
     store.close();
   });
 
+  it("does not present a stale complete review after a later sync failure", async () => {
+    const store = tempStore();
+    let failNext = false;
+    const service = new CueNexaService({
+      client: fakeClient(async () => ({ timeZone: "Asia/Manila" })),
+      store,
+      fetchSnapshot: async () => {
+        if (failNext) {
+          throw new BeeAuthenticationError("raw session token must not leak");
+        }
+        return emptySnapshot();
+      },
+      now: () => NOW,
+      env: {},
+      systemTimeZone: () => "UTC",
+    });
+    const first = await service.sync();
+    expect(first.complete).toBe(true);
+    expect(first.errorCode).toBeNull();
+    const healthy = service.getReview();
+    expect(healthy.complete).toBe(true);
+    expect(healthy.errorCode).toBeNull();
+
+    failNext = true;
+    const failed = await service.sync();
+    expect(failed.complete).toBe(false);
+    expect(failed.errorCode).toBe("unauthenticated");
+    expect(JSON.stringify(failed)).not.toContain("raw session token");
+
+    const review = service.getReview();
+    expect(review.complete).toBe(false);
+    expect(review.errorCode).toBe("unauthenticated");
+    expect(review.errorMessage).toBeTruthy();
+    expect(JSON.stringify(review)).not.toContain("raw session token");
+    store.close();
+  });
+
   it("maps missing Bee CLI to bee_unavailable without leaking internals", async () => {
     const store = tempStore();
     const service = new CueNexaService({
