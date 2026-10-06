@@ -28,3 +28,23 @@ export function isTrustedIpcSender(senderUrl: string | undefined, trustedRendere
   }
   return isTrustedRendererNavigation(senderUrl, trustedRendererUrl);
 }
+
+export const UNTRUSTED_IPC_SENDER_MESSAGE = "IPC sender is not trusted.";
+
+export class UntrustedIpcSenderError extends Error {
+  constructor() {
+    super(UNTRUSTED_IPC_SENDER_MESSAGE);
+    this.name = "UntrustedIpcSenderError";
+  }
+}
+
+export function withTrustedIpcSender<T>(
+  senderUrl: string | undefined,
+  trustedRendererUrl: string,
+  run: () => T,
+): T {
+  if (!isTrustedIpcSender(senderUrl, trustedRendererUrl)) {
+    throw new UntrustedIpcSenderError();
+  }
+  return run();
+}
