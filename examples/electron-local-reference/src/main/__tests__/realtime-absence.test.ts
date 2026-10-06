@@ -21,16 +21,17 @@ function collectSourceFiles(directory: string): string[] {
   return files;
 }
 
-describe("P4-R1A realtime prohibition", () => {
-  it("does not include a realtime or CLI-deep-import path", () => {
-    const files = collectSourceFiles(join(exampleRoot, "src")).filter((file) => !file.includes(`${join("src", "main", "__tests__")}`));
+describe("P4-R1B host import and persistence boundaries", () => {
+  it("does not deep-import CLI, identity-bridge internals, or persist realtime UUIDs", () => {
+    const files = collectSourceFiles(join(exampleRoot, "src")).filter(
+      (file) => !file.includes(`${join("src", "main", "__tests__")}`),
+    );
     files.push(join(exampleRoot, "package.json"));
     const combined = files.map((file) => readFileSync(file, "utf8")).join("\n");
-    expect(combined).not.toMatch(/subscribeRealtime/);
-    expect(combined).not.toMatch(/subscribeToBeeRealtime/);
-    expect(combined).not.toMatch(/ProvisionalAwareness/);
-    expect(combined).not.toMatch(/BeeConversationIdentityBridge/);
     expect(combined).not.toMatch(/@cuenexa-loop\/cli/);
-    expect(combined).not.toMatch(/PROVISIONAL/);
+    expect(combined).not.toMatch(/BeeConversationIdentityBridge/);
+    expect(combined).not.toMatch(/subscribeToBeeRealtime/);
+    expect(combined).not.toMatch(/watch-runtime/);
+    expect(readFileSync(join(exampleRoot, "src/renderer/index.html"), "utf8")).toContain("PROVISIONAL");
   });
 });

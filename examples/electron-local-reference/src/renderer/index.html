@@ -14,14 +14,18 @@
     <header class="header">
       <div>
         <h1>CueNexa Loop — Electron Reference</h1>
-        <p class="subtitle">P4-R1A authoritative historical sync (no realtime)</p>
+        <p class="subtitle">P4-R1A authoritative historical sync · P4-R1B memory-only provisional awareness</p>
       </div>
       <div class="status" id="status">
         <p>Bee: <span id="bee-state">checking…</span></p>
         <p>Timezone: <span id="timezone">—</span></p>
         <p id="status-error" class="error hidden"></p>
       </div>
-      <button type="button" id="sync-button">Sync</button>
+      <div class="actions">
+        <button type="button" id="sync-button">Sync</button>
+        <button type="button" id="realtime-start">Start provisional</button>
+        <button type="button" id="realtime-stop">Stop provisional</button>
+      </div>
     </header>
 
     <section class="summary" id="summary" aria-label="Review summary">
@@ -30,6 +34,14 @@
       <article><strong id="count-waiting">0</strong><span>Waiting</span></article>
       <article><strong id="count-snoozed">0</strong><span>Snoozed</span></article>
       <article><strong id="count-recentlyResolved">0</strong><span>Recently Resolved</span></article>
+    </section>
+
+    <section class="provisional" id="provisional" aria-label="PROVISIONAL">
+      <h2>PROVISIONAL</h2>
+      <p>Health: <span id="provisional-health">off</span></p>
+      <p id="provisional-warning" class="error hidden"></p>
+      <p id="provisional-empty">No provisional signals.</p>
+      <div id="provisional-cards" class="cards"></div>
     </section>
 
     <p id="banner" class="banner hidden"></p>

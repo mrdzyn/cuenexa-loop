@@ -75,11 +75,15 @@ describe("IPC sender trust", () => {
     expect(result).toBe("trusted-ok");
   });
 
-  it("keeps the IPC channel list at exactly three approved channels", () => {
+  it("keeps the IPC channel list allowlisted", () => {
     expect(Object.values(IPC_CHANNELS)).toEqual([
       "cuenexa:get-status",
       "cuenexa:sync",
       "cuenexa:get-review",
+      "cuenexa:start-realtime",
+      "cuenexa:stop-realtime",
+      "cuenexa:get-provisional",
+      "cuenexa:provisional-updated",
     ]);
   });
 
