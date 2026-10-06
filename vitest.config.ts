@@ -8,7 +8,7 @@ const resolvePath = (relativePath: string) => fileURLToPath(new URL(relativePath
 // foundation people will iterate on quickly.
 export default defineConfig({
   test: {
-    include: ["packages/*/src/**/*.test.ts"],
+    include: ["packages/*/src/**/*.test.ts", "examples/*/src/**/*.test.ts"],
   },
   resolve: {
     alias: [

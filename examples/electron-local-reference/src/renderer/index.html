@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self'; connect-src 'none'; font-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>CueNexa Loop — Electron Reference</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <header class="header">
+      <div>
+        <h1>CueNexa Loop — Electron Reference</h1>
+        <p class="subtitle">P4-R1A authoritative historical sync (no realtime)</p>
+      </div>
+      <div class="status" id="status">
+        <p>Bee: <span id="bee-state">checking…</span></p>
+        <p>Timezone: <span id="timezone">—</span></p>
+        <p id="status-error" class="error hidden"></p>
+      </div>
+      <button type="button" id="sync-button">Sync</button>
+    </header>
+
+    <section class="summary" id="summary" aria-label="Review summary">
+      <article><strong id="count-dueNow">0</strong><span>Due Now</span></article>
+      <article><strong id="count-needsAttention">0</strong><span>Needs Attention</span></article>
+      <article><strong id="count-waiting">0</strong><span>Waiting</span></article>
+      <article><strong id="count-snoozed">0</strong><span>Snoozed</span></article>
+      <article><strong id="count-recentlyResolved">0</strong><span>Recently Resolved</span></article>
+    </section>
+
+    <p id="banner" class="banner hidden"></p>
+    <main id="cards" class="cards"></main>
+    <script type="module" src="./renderer.js"></script>
+  </body>
+</html>
