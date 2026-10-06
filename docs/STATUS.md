@@ -40,7 +40,7 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
 | Devpost submission | Record demo + submit Devpost entry | SUBMITTED / CLOSED | demo video uploaded; project officially entered as active contest entry in Amazon Developer Build, Ship, Shape Hackathon |
-| P4-R1 | Electron Local Integration Reference | IN PROGRESS | Spec: `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md`. P4-R1A implementation ready for review; P4-R1B not authorized |
+| P4-R1 | Electron Local Integration Reference | IN PROGRESS | P4-R1A independently audited and live-accepted; awaiting PR #16 merge. P4-R1B remains unauthorized |
 | Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
@@ -200,11 +200,11 @@ Current public/open-source readiness:
 | 3 | Docs / Release | Update status/docs from final acceptance evidence | CLOSED | Merged in PR #9 |
 | 4 | Human / Release | Record <3-minute demo and submit Devpost entry | CLOSED | Demo video uploaded; entry submitted and active in hackathon |
 | 5 | Docs / Orchestrator | Define P4-R1 bounded implementation contract | CLOSED | `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md` |
-| 6 | Implementer | P4-R1A Electron authoritative integration reference | READY FOR REVIEW | `examples/electron-local-reference/` authoritative historical path only (no realtime) |
-| 7 | Auditor | Independently audit exact P4-R1A PR head | PLANNED | Verify head SHA, invariants, no deep imports, synthetic tests |
-| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | PLANNED | Authoritative sync + restart continuity verified against live Bee |
+| 6 | Implementer | P4-R1A Electron authoritative integration reference | ACCEPTED | PR #16; exact head `bad67e42ebda6f5ed33a8f321c207bc8cc048b2a`; automated gates green; live Bee acceptance passed |
+| 7 | Auditor | Independently audit exact P4-R1A PR head | CLOSED | Final exact-head engineering audit approved `bad67e42ebda6f5ed33a8f321c207bc8cc048b2a`; no BLOCKER/MAJOR findings; CI green; 55 files / 450 tests; npm audit 0 vulnerabilities |
+| 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | ACCEPTED | P4-R1A live Bee acceptance passed 2026-10-06; Sync, repeat Sync, DB isolation, restart continuity, no-realtime verified. Evidence: [`docs/audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md`](audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md) |
 
-Phase 5 remains undefined and unauthorized. Do not authorize realtime (P4-R1B) until P4-R1A authoritative reference is accepted.
+Phase 5 remains undefined and unauthorized. Do not authorize P4-R1B until the project owner explicitly authorizes it after PR #16 is merged.
 
 ## 9. Troubleshooting and verification archive
 
@@ -259,11 +259,13 @@ Use `--include-content` only when explicit redacted/truncated content inspection
 
 Post-submission sequence (P4-R1 is **not** Phase 5):
 
-1. Define and implement P4-R1A authoritative Electron reference (historical sync path only).
-2. Independently audit the exact PR head (no implementation changes by auditor).
-3. Perform human/live Bee acceptance on the reference app (if required).
-4. Only after P4-R1A authoritative integration is accepted, authorize P4-R1B (provisional realtime integration in the reference).
-5. Keep Phase 5 undefined until explicitly scoped by the project owner.
+1. P4-R1A implementation — **ACCEPTED**
+2. PR #16 — pending final exact-head documentation audit and merge authorization
+3. P4-R1B — **NOT AUTHORIZED YET**
+4. P4-R1C — future
+5. Phase 5 — NOT DEFINED / NOT AUTHORIZED
+
+Acceptance of P4-R1A does **not automatically authorize P4-R1B**. The project owner must explicitly authorize P4-R1B after PR #16 is merged.
 
 P4-R1 must preserve all architecture/privacy invariants. No new persistence schema. No realtime data directly persisted. No external LLM/cloud. No deep CLI imports.
 
