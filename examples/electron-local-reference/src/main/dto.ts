@@ -1,5 +1,13 @@
+import type { ProvisionalSignal } from "@cuenexa-loop/loop-engine";
 import type { ReviewItem, ReviewModel } from "@cuenexa-loop/loop-store";
-import type { LoopCardDto, ReviewSection, ReviewSnapshotDto } from "../shared/ipc-contract.js";
+import type {
+  LoopCardDto,
+  ProvisionalHealth,
+  ProvisionalSignalDto,
+  ProvisionalSnapshotDto,
+  ReviewSection,
+  ReviewSnapshotDto,
+} from "../shared/ipc-contract.js";
 
 const ALLOWED_CARD_KEYS = [
   "id",
@@ -93,4 +101,48 @@ const PROHIBITED_DTO_SUBSTRINGS = [
 export function dtoContainsProhibitedContent(value: unknown): boolean {
   const serialized = JSON.stringify(value).toLowerCase();
   return PROHIBITED_DTO_SUBSTRINGS.some((token) => serialized.includes(token));
+}
+
+const ALLOWED_PROVISIONAL_KEYS = ["id", "kind", "observedAt", "state", "label", "confidence"] as const;
+
+export function toProvisionalSignalDto(signal: ProvisionalSignal): ProvisionalSignalDto {
+  return {
+    id: signal.id,
+    kind: signal.type,
+    observedAt: signal.observedAt,
+    state: "active",
+    label: "PROVISIONAL",
+    confidence: signal.confidence,
+  };
+}
+
+export function toProvisionalSnapshotDto(input: {
+  readonly health: ProvisionalHealth;
+  readonly warningCode: string | null;
+  readonly warningMessage: string | null;
+  readonly signals: readonly ProvisionalSignal[];
+}): ProvisionalSnapshotDto {
+  return {
+    health: input.health,
+    warningCode: input.warningCode,
+    warningMessage: input.warningMessage,
+    signals: input.signals.map(toProvisionalSignalDto),
+  };
+}
+
+export function emptyProvisionalSnapshot(): ProvisionalSnapshotDto {
+  return {
+    health: "off",
+    warningCode: null,
+    warningMessage: null,
+    signals: [],
+  };
+}
+
+export function assertProvisionalSignalIsSanitized(signal: ProvisionalSignalDto): void {
+  for (const key of Object.keys(signal)) {
+    if (!ALLOWED_PROVISIONAL_KEYS.includes(key as (typeof ALLOWED_PROVISIONAL_KEYS)[number])) {
+      throw new Error(`Unexpected provisional DTO key: ${key}`);
+    }
+  }
 }

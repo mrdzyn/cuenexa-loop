@@ -14,9 +14,9 @@ Location: `examples/electron-local-reference/` (private npm workspace). CueNexa 
 
 | Phase | Scope | State |
 | --- | --- | --- |
-| **P4-R1A** | Authoritative processed-history Electron integration | This task |
-| **P4-R1B** | Provisional realtime awareness in the same reference | Unauthorized until P4-R1A is independently audited and accepted |
-| **P4-R1C** | Final developer documentation, live Bee acceptance, screenshots | After P4-R1A (and P4-R1B if authorized) |
+| **P4-R1A** | Authoritative processed-history Electron integration | MERGED |
+| **P4-R1B** | Provisional realtime awareness in the same reference | Authorized bounded extension (this task) |
+| **P4-R1C** | Final developer documentation, live Bee acceptance, screenshots | Future |
 
 P4-R1A must be fully usable with historical sync alone. The host remains correct if Bee realtime is absent, disconnected, or never implemented.
 
@@ -91,26 +91,118 @@ Renderer receives sanitized structural DTOs only. No `ipcRenderer`, Node, filesy
 
 ### UI (read-only)
 
-Header (title, Bee auth state, timezone, Sync), review section counts, structural loop cards, empty/error states. No transcript viewer, content toggle, editing, ack/snooze/pin actions, or PROVISIONAL UI.
+Header (title, Bee auth state, timezone, Sync), review section counts, structural loop cards, empty/error states. No transcript viewer, content toggle, editing, or ack/snooze/pin actions. P4-R1A remains fully usable without the P4-R1B PROVISIONAL section.
 
 ---
 
-## P4-R1B — provisional realtime (future, not authorized)
+## P4-R1B — provisional realtime (authorized bounded extension)
+
+Authorized baseline: `bf5d93ea27865b18ace5022befd06c6d8b217600` (`origin/main` at authorization). P4-R1A remains the mandatory authoritative historical path.
+
+### Purpose
+
+Demonstrate optional, memory-only Bee realtime awareness in `examples/electron-local-reference/` using package-root APIs only.
+
+### Non-goals
+
+Not Phase 5. Not a CueNexa desktop product. Not a persistence model. Not realtime-created `LoopThread` state. Not a daemon, cloud service, public SDK, LLM, tray, notifications, or installer.
+
+### Architecture
 
 ```text
 Bee realtime
-→ ProvisionalAwareness
-→ memory-only PROVISIONAL UI
-→ never directly persisted
+→ BeeAdapterClient.subscribeRealtime()
+→ Electron Main Process
+→ ProvisionalAwareness (one in-memory instance)
+→ host-owned sanitized provisional DTO
+→ narrow IPC / event
+→ Electron Renderer PROVISIONAL UI
+→ never persisted
 ```
 
-P4-R1A must not call `subscribeRealtime`, `subscribeToBeeRealtime`, `ProvisionalAwareness`, realtime UUID mapping, watch loops, or show PROVISIONAL UI.
+Tracks stay separate. Authoritative Sync must work if realtime was never started, is unsupported, disconnects, warns, or fails.
+
+### Package-root APIs
+
+- `@cuenexa-loop/bee-adapter`: `BeeAdapterClient.subscribeRealtime(options?: BeeRealtimeSubscribeOptions): BeeRealtimeSubscription` (`{ events, close() }`).
+- `@cuenexa-loop/loop-engine`: `ProvisionalAwareness` — `ingest`, `list`, `pruneExpired`, `retireConversations`, `resolveConversationIdentity`.
+
+Do not import CLI `watch-runtime`. Do not deep-import `@cuenexa-loop/cli`. Do not expose `BeeConversationIdentityBridge` to the renderer. Do not call `subscribeToBeeRealtime` from the example (use `BeeAdapterClient.subscribeRealtime`).
+
+### Ownership
+
+Electron Main owns the Bee subscription, exactly one `ProvisionalAwareness`, warning handling, pruning, lifecycle, and cleanup. Renderer never receives `BeeAdapterClient`, the subscription, raw events, `ProvisionalAwareness`, SQLite, `LoopStore`, or identity-bridge internals.
+
+Application restart clears all provisional state (expected).
+
+### Authority rule
+
+Processed Bee history is the only authority for persistent `LoopThread` state. Realtime must never create, mutate, reopen, resolve, or delete persistent threads, structural history, user-state, or notification-ledger rows. **Zero `LoopStore` writes from realtime events.** Realtime health must not change authoritative completeness.
+
+### IPC / events
+
+Preserve P4-R1A invoke channels. Add only:
+
+- `cuenexa:start-realtime`
+- `cuenexa:stop-realtime`
+- `cuenexa:get-provisional`
+- `cuenexa:provisional-updated` (Main → trusted renderer event)
+
+Fixed allowlist. No generic dispatcher. Trusted bundled renderer only. Untrusted senders receive zero CueNexa data.
+
+### Provisional DTO
+
+Renderer may receive:
+
+```text
+health: off | connecting | active | disconnected
+warningCode / sanitized warningMessage
+signals: { id, kind, observedAt, state: "active", label: "PROVISIONAL", confidence }
+```
+
+Do not expose raw transcript, utterance text, evidence, summaries, facts/todo source, location, speaker names/IDs, auth material, raw Bee payloads, correlation anchors, identity-bridge state, or raw realtime conversation UUIDs.
+
+### Identity and retirement
+
+Never guess realtime UUID ↔ historical numeric-ID mappings (no time, title, speaker, transcript, or sequence heuristics).
+
+`resolveConversationIdentity(sessionId, conversationId)` only when a single supported `conversation_state` event already contains both identifiers.
+
+`retireConversations` only from conversation IDs detected on an **authoritative Sync**. Do not auto-refresh persistence from realtime idle. Do not retire because a signal disappeared, history omitted it, or a heuristic match seems likely. Bounded TTL/pruning may expire memory-only signals.
+
+### Duplicate / bounded memory
+
+Use existing `ProvisionalAwareness` dedupe, buffer, and TTL. Do not add a daemon.
+
+### Disconnect / warnings
+
+Malformed or unsupported realtime events: skip/warn; no persistence. Disconnect: provisional health becomes disconnected; authoritative review unchanged. Authoritative Sync failure uses existing P4-R1A degraded behavior and does not depend on realtime health.
+
+### Shutdown
+
+Close the Bee subscription, remove listeners, release in-memory provisional state. No orphan stream or background runtime.
+
+### Renderer
+
+Distinct **PROVISIONAL** section, never mixed into Due Now / Needs Attention / Waiting / Snoozed / Recently Resolved. States: off/not started, connecting, active, disconnected/degraded, no signals, one or more signals.
+
+### Tests
+
+Synthetic fixtures only. Host-boundary coverage: no `LoopStore` writes from realtime; DTO privacy; IPC trust; disconnect isolation; pruning/dedupe; retirement only via explicit historical IDs; P4-R1A regressions remain green.
+
+### Live Bee acceptance
+
+Deferred until independent engineering audit of this PR. P4-R1C remains future.
+
+### P4-R1B is not Phase 5
+
+Phase 5 remains NOT DEFINED / NOT AUTHORIZED.
 
 ---
 
 ## P4-R1C — documentation / live acceptance (future)
 
-Human/live Bee acceptance of the reference app after engineering audit. Screenshots and final developer polish. Not part of P4-R1A.
+Human/live Bee acceptance of the reference app after engineering audit. Screenshots and final developer polish. Not part of P4-R1A or this P4-R1B implementation PR.
 
 ---
 

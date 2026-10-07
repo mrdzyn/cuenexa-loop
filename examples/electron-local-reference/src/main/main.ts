@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import { app, BrowserWindow } from "electron";
 import { BeeAdapterClient } from "@cuenexa-loop/bee-adapter";
 import { LoopStore } from "@cuenexa-loop/loop-store";
+import { IPC_CHANNELS } from "../shared/ipc-contract.js";
 import { CueNexaService, resolveElectronStorePath } from "./cuenexa-service.js";
 import { registerCueNexaIpc } from "./ipc.js";
 import { isTrustedRendererNavigation, resolveTrustedRendererUrl } from "./renderer-trust.js";
@@ -10,6 +11,17 @@ import { isTrustedRendererNavigation, resolveTrustedRendererUrl } from "./render
 const moduleDirectory = dirname(fileURLToPath(import.meta.url));
 const rendererHtmlPath = join(moduleDirectory, "../renderer/index.html");
 const trustedRendererUrl = resolveTrustedRendererUrl(rendererHtmlPath);
+
+let service: CueNexaService | null = null;
+
+function publishProvisional(snapshot: ReturnType<CueNexaService["getProvisional"]>): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    const url = window.webContents.getURL();
+    if (isTrustedRendererNavigation(url, trustedRendererUrl)) {
+      window.webContents.send(IPC_CHANNELS.provisionalUpdated, snapshot);
+    }
+  }
+}
 
 function createService(): CueNexaService {
   const storePath = resolveElectronStorePath({
@@ -19,6 +31,7 @@ function createService(): CueNexaService {
   return new CueNexaService({
     client: new BeeAdapterClient(),
     store: new LoopStore({ path: storePath }),
+    onProvisionalChange: publishProvisional,
   });
 }
 
@@ -59,7 +72,8 @@ app.on("web-contents-created", (_event, contents) => {
 });
 
 void app.whenReady().then(() => {
-  registerCueNexaIpc(createService(), trustedRendererUrl);
+  service = createService();
+  registerCueNexaIpc(service, trustedRendererUrl);
   createWindow();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -68,7 +82,12 @@ void app.whenReady().then(() => {
   });
 });
 
+app.on("before-quit", () => {
+  service?.shutdown();
+});
+
 app.on("window-all-closed", () => {
+  service?.shutdown();
   if (process.platform !== "darwin") {
     app.quit();
   }

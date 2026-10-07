@@ -4,7 +4,7 @@
 >
 > Keep this file concise, factual, and current. Update it after material implementation, review, merge, blocker, or acceptance milestones.
 
-**Last updated:** 2026-10-06  
+**Last updated:** 2026-10-07  
 **Repository:** `mrdzyn/cuenexa-loop`  
 **Default branch:** `main`  
 **Current project state:** Phase 4 engineering and live Bee acceptance remain ACCEPTED / CLOSED  
@@ -40,7 +40,7 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
 | Devpost submission | Record demo + submit Devpost entry | SUBMITTED / CLOSED | demo video uploaded; project officially entered as active contest entry in Amazon Developer Build, Ship, Shape Hackathon |
-| P4-R1 | Electron Local Integration Reference | IN PROGRESS | P4-R1A accepted and squash-merged via PR #16 at main `21a9fd2e17bc05da697f5030a6d95d484e70de9f`. P4-R1B remains unauthorized |
+| P4-R1 | Electron Local Integration Reference | IN PROGRESS | P4-R1A MERGED (PR #16). P4-R1B ACCEPTED at `35620abc7cf221a87949c8698d12187dec1ed0ff`; PR #18 awaiting final exact-head audit and merge. P4-R1C future. |
 | Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
@@ -203,8 +203,12 @@ Current public/open-source readiness:
 | 6 | Implementer | P4-R1A Electron authoritative integration reference | MERGED | PR #16 squash-merged to main `21a9fd2e17bc05da697f5030a6d95d484e70de9f`; audited/accepted implementation head `bad67e42ebda6f5ed33a8f321c207bc8cc048b2a`; engineering audit passed; live Bee acceptance passed |
 | 7 | Auditor | Independently audit exact P4-R1A PR head | CLOSED | Final exact-head engineering audit approved `bad67e42ebda6f5ed33a8f321c207bc8cc048b2a`; no BLOCKER/MAJOR findings; CI green; 55 files / 450 tests; npm audit 0 vulnerabilities |
 | 8 | Human / QA | Run reference-app live Bee acceptance after engineering audit | ACCEPTED | P4-R1A live Bee acceptance passed 2026-10-06; Sync, repeat Sync, DB isolation, restart continuity, no-realtime verified. Evidence: [`docs/audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md`](audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md) |
+| 9 | Implementer | P4-R1B Electron provisional realtime reference | ACCEPTED | PR #18; implementation head `35620abc7cf221a87949c8698d12187dec1ed0ff`; memory-only `subscribeRealtime` + `ProvisionalAwareness`; zero LoopStore writes from realtime |
+| 10 | Auditor | Independently audit exact P4-R1B PR head | CLOSED | Engineering re-audit approved `35620abc7cf221a87949c8698d12187dec1ed0ff` after startup/disconnect/TTL remediations; CI 56 files / 465 tests; npm audit 0 vulnerabilities |
+| 11 | Human / QA | P4-R1B live Bee realtime acceptance | ACCEPTED | 2026-10-07 live Bee PASS. Evidence: [`docs/audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md`](audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md) |
+| 12 | Auditor | Final exact-head audit of PR #18 before merge | PLANNED | Audit docs-only acceptance-closure head; then owner squash-merge authorization |
 
-Phase 5 remains undefined and unauthorized. P4-R1B is **NOT AUTHORIZED**. Wait for explicit project-owner authorization before beginning P4-R1B.
+Phase 5 remains undefined and unauthorized. P4-R1C remains future. P4-R1B is ACCEPTED, not MERGED.
 
 ## 9. Troubleshooting and verification archive
 
@@ -260,11 +264,11 @@ Use `--include-content` only when explicit redacted/truncated content inspection
 Post-submission sequence (P4-R1 is **not** Phase 5):
 
 1. P4-R1A — **MERGED** (`21a9fd2e17bc05da697f5030a6d95d484e70de9f`, PR #16 squash)
-2. P4-R1B — **NOT AUTHORIZED**
+2. P4-R1B — **ACCEPTED** (implementation head `35620abc7cf221a87949c8698d12187dec1ed0ff`; PR #18 not merged)
 3. P4-R1C — future
 4. Phase 5 — NOT DEFINED / NOT AUTHORIZED
 
-Next action: wait for explicit project-owner authorization before beginning P4-R1B. Acceptance/merge of P4-R1A does not itself authorize P4-R1B.
+Next action: final exact-head audit of PR #18. If clean, request explicit owner authorization to squash-merge. Do not start P4-R1C.
 
 P4-R1 must preserve all architecture/privacy invariants. No new persistence schema. No realtime data directly persisted. No external LLM/cloud. No deep CLI imports.
 

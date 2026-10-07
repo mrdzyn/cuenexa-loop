@@ -1,8 +1,8 @@
-# CueNexa Loop — Electron Local Integration Reference (P4-R1A)
+# CueNexa Loop — Electron Local Integration Reference (P4-R1A + P4-R1B)
 
-Executable architecture reference showing how a **local Electron Main Process** embeds CueNexa Loop using **authoritative processed Bee history only**.
+Executable architecture reference showing how a **local Electron Main Process** embeds CueNexa Loop using **authoritative processed Bee history**, with optional **memory-only provisional realtime**.
 
-This is not a finished CueNexa desktop product. Realtime / provisional awareness is intentionally absent (P4-R1B, unauthorized until P4-R1A is audited and accepted).
+This is not a finished CueNexa desktop product and is not Phase 5.
 
 ## What it demonstrates
 
@@ -83,6 +83,6 @@ Timezone resolution: valid `LOOP_TIMEZONE` → Bee account timezone → system t
 | Sync failed / empty loops | Wait for Bee processed history; use **Process now** in the Bee app if needed |
 | Partial snapshot banner | Completeness is intentionally not claimed; do not infer resolution |
 
-## Realtime
+## Realtime (P4-R1B)
 
-P4-R1A does **not** subscribe to Bee realtime, does not use `ProvisionalAwareness`, and does not show PROVISIONAL UI.
+Optional. Main owns `BeeAdapterClient.subscribeRealtime()` and one in-memory `ProvisionalAwareness`. The renderer **PROVISIONAL** section is separate from authoritative review cards. Realtime never writes `LoopStore`. Restart clears provisional state. Historical Sync remains required and remains correct if realtime is off or disconnected.

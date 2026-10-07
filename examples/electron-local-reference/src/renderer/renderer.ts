@@ -1,4 +1,9 @@
-import type { ConnectionStatusDto, CueNexaPreloadApi, ReviewSnapshotDto } from "../shared/ipc-contract.js";
+import type {
+  ConnectionStatusDto,
+  CueNexaPreloadApi,
+  ProvisionalSnapshotDto,
+  ReviewSnapshotDto,
+} from "../shared/ipc-contract.js";
 
 declare global {
   interface Window {
@@ -12,6 +17,12 @@ const statusError = document.querySelector("#status-error");
 const banner = document.querySelector("#banner");
 const cards = document.querySelector("#cards");
 const syncButton = document.querySelector("#sync-button");
+const realtimeStart = document.querySelector("#realtime-start");
+const realtimeStop = document.querySelector("#realtime-stop");
+const provisionalHealth = document.querySelector("#provisional-health");
+const provisionalWarning = document.querySelector("#provisional-warning");
+const provisionalEmpty = document.querySelector("#provisional-empty");
+const provisionalCards = document.querySelector("#provisional-cards");
 
 function text(el: Element | null, value: string): void {
   if (el) el.textContent = value;
@@ -83,6 +94,40 @@ function renderReview(snapshot: ReviewSnapshotDto): void {
   }
 }
 
+function healthLabel(health: ProvisionalSnapshotDto["health"]): string {
+  if (health === "off") return "off / not started";
+  if (health === "connecting") return "connecting";
+  if (health === "active") return "active";
+  return "disconnected / degraded";
+}
+
+function renderProvisional(snapshot: ProvisionalSnapshotDto): void {
+  text(provisionalHealth, healthLabel(snapshot.health));
+  if (snapshot.warningMessage) {
+    text(provisionalWarning, snapshot.warningMessage);
+    setHidden(provisionalWarning, false);
+  } else {
+    setHidden(provisionalWarning, true);
+  }
+  setHidden(provisionalEmpty, snapshot.signals.length > 0);
+  if (!provisionalCards) return;
+  provisionalCards.replaceChildren();
+  for (const signal of snapshot.signals) {
+    const article = document.createElement("article");
+    article.className = "card provisional-card";
+    const label = document.createElement("h2");
+    label.textContent = signal.label;
+    const kind = document.createElement("p");
+    kind.textContent = signal.kind;
+    const confidence = document.createElement("p");
+    confidence.textContent = signal.confidence;
+    const observed = document.createElement("p");
+    observed.textContent = signal.observedAt;
+    article.append(label, kind, confidence, observed);
+    provisionalCards.append(article);
+  }
+}
+
 async function refreshStatus(): Promise<void> {
   renderStatus(await window.cuenexa.getStatus());
 }
@@ -93,6 +138,7 @@ async function sync(): Promise<void> {
     const snapshot = await window.cuenexa.sync();
     await refreshStatus();
     renderReview(snapshot);
+    renderProvisional(await window.cuenexa.getProvisional());
   } finally {
     if (syncButton instanceof HTMLButtonElement) syncButton.disabled = false;
   }
@@ -102,7 +148,18 @@ syncButton?.addEventListener("click", () => {
   void sync();
 });
 
+realtimeStart?.addEventListener("click", () => {
+  void window.cuenexa.startRealtime().then(renderProvisional);
+});
+
+realtimeStop?.addEventListener("click", () => {
+  void window.cuenexa.stopRealtime().then(renderProvisional);
+});
+
+window.cuenexa.onProvisionalUpdate(renderProvisional);
+
 void (async () => {
   await refreshStatus();
   renderReview(await window.cuenexa.getReview());
+  renderProvisional(await window.cuenexa.getProvisional());
 })();
