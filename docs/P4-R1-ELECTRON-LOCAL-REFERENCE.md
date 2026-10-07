@@ -15,8 +15,8 @@ Location: `examples/electron-local-reference/` (private npm workspace). CueNexa 
 | Phase | Scope | State |
 | --- | --- | --- |
 | **P4-R1A** | Authoritative processed-history Electron integration | MERGED |
-| **P4-R1B** | Provisional realtime awareness in the same reference | Authorized bounded extension (this task) |
-| **P4-R1C** | Final developer documentation, live Bee acceptance, screenshots | Future |
+| **P4-R1B** | Provisional realtime awareness in the same reference | MERGED |
+| **P4-R1C** | Final developer documentation and acceptance polish | AUTHORIZED / IN PROGRESS |
 
 P4-R1A must be fully usable with historical sync alone. The host remains correct if Bee realtime is absent, disconnected, or never implemented.
 
@@ -95,7 +95,7 @@ Header (title, Bee auth state, timezone, Sync), review section counts, structura
 
 ---
 
-## P4-R1B — provisional realtime (authorized bounded extension)
+## P4-R1B — provisional realtime (merged)
 
 Authorized baseline: `bf5d93ea27865b18ace5022befd06c6d8b217600` (`origin/main` at authorization). P4-R1A remains the mandatory authoritative historical path.
 
@@ -192,7 +192,7 @@ Synthetic fixtures only. Host-boundary coverage: no `LoopStore` writes from real
 
 ### Live Bee acceptance
 
-Deferred until independent engineering audit of this PR. P4-R1C remains future.
+PASSED on 2026-10-07 after independent engineering audit. See `docs/audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md`. P4-R1B was squash-merged in PR #18 at main `a938001abd232ddd6d4a2aab1fa6af0a8aad842e`.
 
 ### P4-R1B is not Phase 5
 
@@ -200,16 +200,73 @@ Phase 5 remains NOT DEFINED / NOT AUTHORIZED.
 
 ---
 
-## P4-R1C — documentation / live acceptance (future)
+## P4-R1C — final developer documentation and acceptance polish (authorized)
 
-Human/live Bee acceptance of the reference app after engineering audit. Screenshots and final developer polish. Not part of P4-R1A or this P4-R1B implementation PR.
+Authorized baseline: `bb94ee9cbeb243b6c0043dbacbf33a277c575e40` (`origin/main` at authorization).
+
+### Purpose
+
+Close P4-R1 as a developer-usable Electron integration reference by polishing the example documentation, consolidating already-completed acceptance evidence, documenting troubleshooting and known limitations, and adding sanitized screenshots only when they can be produced without exposing private Bee-derived content.
+
+P4-R1A and P4-R1B remain MERGED. Their live Bee acceptance is already PASS. P4-R1C consolidates and presents that evidence; it does not reopen architecture or require another live Bee acceptance campaign.
+
+### Allowed scope
+
+- `docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md`;
+- `docs/STATUS.md`;
+- `examples/electron-local-reference/README.md`;
+- documentation-only supporting files;
+- optional sanitized screenshots under `examples/electron-local-reference/` or `docs/` when privacy-safe.
+
+### Screenshot privacy rules
+
+Any committed screenshot must omit or sanitize:
+
+- transcripts, utterances, evidence, summaries, and private conversation titles;
+- Bee authentication material or tokens;
+- realtime conversation UUIDs, session IDs, speaker identifiers, or precise location;
+- any other Bee-derived personal content that is not necessary to demonstrate the structural UI.
+
+If a screenshot cannot be produced safely, omit it and document that decision. Screenshots are polish, not an acceptance requirement.
+
+### Required developer documentation
+
+The Electron reference documentation must explain:
+
+- prerequisites, install, build, test, and run commands;
+- authoritative Sync and optional realtime Start/Stop behavior;
+- the authoritative-history and memory-only provisional architecture tracks;
+- storage path and disposable DB override;
+- timezone resolution hierarchy;
+- IPC/trust boundary and sanitized renderer DTOs;
+- failure isolation and expected restart behavior;
+- troubleshooting for Bee unavailable/unauthenticated, partial history, realtime disconnect, empty provisional state, and restart-before-Sync;
+- pointers to P4-R1A and P4-R1B live acceptance evidence.
+
+### Non-goals and stop condition
+
+No new product features, Electron UI behavior, persistence model, realtime architecture, IPC channels, CLI behavior, cloud/API/LLM/telemetry, tray/notifications/autostart, installer/updater/signing, or public npm publishing.
+
+Production package/code changes are not authorized. If a genuine documentation-blocking product defect is discovered, STOP and escalate for a separate owner decision rather than silently fixing it in P4-R1C.
+
+P4-R1C is not Phase 5. Phase 5 remains NOT DEFINED / NOT AUTHORIZED.
+
+### Completion gate
+
+P4-R1C becomes READY FOR REVIEW only when:
+
+1. the contract and example README are internally consistent with merged P4-R1A/P4-R1B behavior;
+2. acceptance evidence is linked without reproducing private Bee content;
+3. screenshot handling follows the privacy rules above;
+4. documentation-only scope is confirmed;
+5. `docs/STATUS.md` records P4-R1C READY FOR REVIEW and P4-R1 remains IN PROGRESS pending independent audit/merge.
 
 ---
 
 ## Invariants (non-negotiable)
 
 - Processed Bee history is the only authority for persistent `LoopThread` state.
-- Realtime remains provisional and memory-only (when later authorized).
+- Realtime remains provisional and memory-only.
 - Electron Main Process owns Bee access and `LoopStore`.
 - Renderer receives sanitized derived DTOs only.
 - No raw transcripts persisted.
