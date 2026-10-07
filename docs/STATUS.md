@@ -9,7 +9,7 @@
 **Default branch:** `main`  
 **Current project state:** Phase 4 engineering and live Bee acceptance remain ACCEPTED / CLOSED  
 **Hackathon submission:** SUBMITTED / CONTEST ENTRY ACTIVE (demo video uploaded; entry officially in Amazon Developer Build, Ship, Shape Hackathon)  
-**Current authorized objective:** None — P4-R1 CLOSED; awaiting explicit owner authorization for any next milestone  
+**Current authorized objective:** HOLD-CONTEST-STABLE — no feature work; contest entry active; defects/security/dependencies only if they arise  
 **Phase 5:** NOT DEFINED / NOT AUTHORIZED
 
 ## 1. Baseline
@@ -270,8 +270,9 @@ Post-submission sequence (P4-R1 is **not** Phase 5):
 3. P4-R1C — **MERGED** (`66144392962b2ac299a33d6e0e3121024ef7ef2a`, PR #20 squash; audited head `0be7537a4ef7b1926b301c499349d3ca66c66db1`)
 4. P4-R1 — **CLOSED**
 5. Phase 5 — NOT DEFINED / NOT AUTHORIZED
+6. HOLD-CONTEST-STABLE — **AUTHORIZED** (owner 2026-10-07)
 
-Next action: await explicit owner decision on the next named milestone. Do not infer or invent Phase 5 scope.
+Next action: leave the repository stable while the hackathon entry is active. Do not start date/time-fidelity work, host-product discovery, or any other named milestone unless the owner explicitly authorizes it. Do not infer or invent Phase 5 scope.
 
 P4-R1 must preserve all architecture/privacy invariants. No new persistence schema. No realtime data directly persisted. No external LLM/cloud. No deep CLI imports.
 
