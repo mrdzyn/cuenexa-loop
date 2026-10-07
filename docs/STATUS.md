@@ -40,7 +40,7 @@ Because this file itself may be updated frequently, agents must verify the actua
 | Phase 4 | Ambient realtime awareness | CLOSED | `ac16694a6d85079114215aada7d171180ff592da`, PR #8 |
 | Phase 4 live acceptance | Real Bee realtime → processed-history handoff | ACCEPTED / CLOSED | 2026-09-20 live Bee test (P4-LIVE) |
 | Devpost submission | Record demo + submit Devpost entry | SUBMITTED / CLOSED | demo video uploaded; project officially entered as active contest entry in Amazon Developer Build, Ship, Shape Hackathon |
-| P4-R1 | Electron Local Integration Reference | IN PROGRESS | P4-R1A MERGED (PR #16). P4-R1B MERGED via PR #18 squash at main `a938001abd232ddd6d4a2aab1fa6af0a8aad842e`. P4-R1C future. |
+| P4-R1 | Electron Local Integration Reference | IN PROGRESS | P4-R1A MERGED (PR #16). P4-R1B MERGED via PR #18 squash at main `a938001abd232ddd6d4a2aab1fa6af0a8aad842e`. P4-R1C documentation/polish is READY FOR REVIEW on `docs/p4-r1c-electron-reference-docs`. |
 | Phase 5 | Future product phase | NOT DEFINED | No authorized scope; do not invent Phase 5 |
 
 ## 3. Last verified Phase 4 engineering quality baseline
@@ -115,7 +115,7 @@ sanitized IPC
 Electron Renderer
 ```
 
-Future provisional realtime (P4-R1B only after P4-R1A accepted):
+Optional provisional realtime (P4-R1B, merged):
 
 ```text
 Bee realtime
@@ -207,8 +207,10 @@ Current public/open-source readiness:
 | 10 | Auditor | Independently audit exact P4-R1B PR head | CLOSED | Engineering re-audit approved `35620abc7cf221a87949c8698d12187dec1ed0ff` after startup/disconnect/TTL remediations; CI 56 files / 465 tests; npm audit 0 vulnerabilities |
 | 11 | Human / QA | P4-R1B live Bee realtime acceptance | ACCEPTED | 2026-10-07 live Bee PASS. Evidence: [`docs/audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md`](audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md) |
 | 12 | Auditor / Release | Final exact-head audit and squash-merge of PR #18 | CLOSED | Final exact-head audit passed; PR #18 squash-merged; main `a938001abd232ddd6d4a2aab1fa6af0a8aad842e` |
+| 13 | Docs / Release | P4-R1C final Electron developer docs and acceptance polish | READY FOR REVIEW | Contract locked; developer README polished; acceptance evidence consolidated; screenshots intentionally omitted because no repository artifact was independently verifiable as sanitized |
+| 14 | Auditor | Independently audit exact P4-R1C PR head | PLANNED | Verify docs-only scope, contract consistency, privacy-safe screenshot decision, and Phase 5 boundary |
 
-Phase 5 remains undefined and unauthorized. P4-R1C remains future / not started. P4-R1B is MERGED. Wait for explicit project-owner authorization before starting or defining P4-R1C.
+Phase 5 remains undefined and unauthorized. P4-R1C is READY FOR REVIEW; P4-R1A and P4-R1B remain MERGED. Do not merge P4-R1C before independent exact-head audit.
 
 ## 9. Troubleshooting and verification archive
 
@@ -265,10 +267,10 @@ Post-submission sequence (P4-R1 is **not** Phase 5):
 
 1. P4-R1A — **MERGED** (`21a9fd2e17bc05da697f5030a6d95d484e70de9f`, PR #16 squash)
 2. P4-R1B — **MERGED** (`a938001abd232ddd6d4a2aab1fa6af0a8aad842e`, PR #18 squash; accepted implementation head `35620abc7cf221a87949c8698d12187dec1ed0ff`)
-3. P4-R1C — FUTURE / NOT STARTED
+3. P4-R1C — **READY FOR REVIEW** (`docs/p4-r1c-electron-reference-docs`; docs/polish only)
 4. Phase 5 — NOT DEFINED / NOT AUTHORIZED
 
-Next action: wait for explicit project-owner authorization before starting or defining P4-R1C. Merge of P4-R1B does not authorize P4-R1C.
+Next action: independent exact-head audit of the P4-R1C documentation/polish PR. Keep P4-R1 IN PROGRESS until P4-R1C is accepted and merged.
 
 P4-R1 must preserve all architecture/privacy invariants. No new persistence schema. No realtime data directly persisted. No external LLM/cloud. No deep CLI imports.
 
