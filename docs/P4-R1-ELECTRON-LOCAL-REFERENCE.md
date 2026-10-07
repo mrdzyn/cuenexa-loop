@@ -16,7 +16,7 @@ Location: `examples/electron-local-reference/` (private npm workspace). CueNexa 
 | --- | --- | --- |
 | **P4-R1A** | Authoritative processed-history Electron integration | MERGED |
 | **P4-R1B** | Provisional realtime awareness in the same reference | MERGED |
-| **P4-R1C** | Final developer documentation and acceptance polish | READY FOR REVIEW |
+| **P4-R1C** | Final developer documentation and acceptance polish | MERGED |
 
 P4-R1A must be fully usable with historical sync alone. The host remains correct if Bee realtime is absent, disconnected, or never implemented.
 
