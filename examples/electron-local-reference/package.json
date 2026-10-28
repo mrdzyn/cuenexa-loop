@@ -16,6 +16,6 @@
     "@cuenexa-loop/contracts": "*",
     "@cuenexa-loop/loop-engine": "*",
     "@cuenexa-loop/loop-store": "*",
-    "electron": "^44.5.1"
+    "electron": "^44.9.1"
   }
 }
