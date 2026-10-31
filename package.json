@@ -16,7 +16,7 @@
     "build": "npm run build --workspaces --if-present",
     "test": "vitest run",
     "typecheck": "tsc -b --pretty",
-    "clean": "tsc -b --clean && rimraf packages/*/dist examples/*/dist",
+    "clean": "tsc -b --clean && node -e \"const fs=require('fs');for(const r of ['packages','examples'])for(const d of fs.readdirSync(r))fs.rmSync(r+'/'+d+'/dist',{recursive:true,force:true})\"",
     "start": "npm run start --workspace @cuenexa-loop/cli",
     "bee:check": "npm run build && node packages/cli/dist/index.js",
     "loops:check": "npm run build && node packages/cli/dist/loops-check.js",
@@ -41,7 +41,6 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
-    "rimraf": "^5.0.7",
     "typescript": "^5.5.4",
     "vitest": "^4.1.11"
   }
