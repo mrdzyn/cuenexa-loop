@@ -29,6 +29,12 @@
 > [!IMPORTANT]
 > **Processed Bee history is the only authority for persistent Loop state.** Realtime awareness is provisional, bounded, memory-only, and never writes persistent state directly.
 
+<p align="center">
+  <img src="docs/assets/cuenexa-animated-flow.svg" alt="Animated CueNexa Loop architecture: authoritative Bee history flows through the adapter, deterministic engine, local LoopStore and review UI; realtime follows a separate memory-only provisional path." width="100%" />
+</p>
+
+<p align="center"><sub>Animated architecture overview · authoritative persistence above · memory-only realtime below</sub></p>
+
 ## What CueNexa Loop does
 
 CueNexa Loop is an open-source companion for Amazon Bee that turns conversational follow-through into a deterministic local workflow.
