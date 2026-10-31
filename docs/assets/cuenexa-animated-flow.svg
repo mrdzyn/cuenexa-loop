@@ -1,0 +1,163 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1440" height="580" viewBox="0 0 1440 580" role="img" aria-labelledby="title desc">
+  <title id="title">CueNexa Loop — two-track privacy-first architecture</title>
+  <desc id="desc">Above: processed Bee history flows into normalized data, deterministic detection and correlation, local SQLite, and review. Below: Bee realtime events flow into temporary provisional awareness and the provisional user interface. There is no direct path from realtime to persistence. Moving dots illustrate each direction when animation is supported.</desc>
+  <defs>
+    <linearGradient id="back" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071224"/>
+      <stop offset=".55" stop-color="#0e1c32"/>
+      <stop offset="1" stop-color="#091827"/>
+    </linearGradient>
+    <linearGradient id="mainStroke" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#818cf8"/>
+    </linearGradient>
+    <linearGradient id="liveStroke" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2dd4bf"/>
+      <stop offset="1" stop-color="#34d399"/>
+    </linearGradient>
+    <pattern id="dots" width="25" height="25" patternUnits="userSpaceOnUse">
+      <circle cx="2" cy="2" r=".9" fill="#94a3b8" fill-opacity=".12"/>
+    </pattern>
+    <filter id="shadow" x="-20%" y="-35%" width="140%" height="180%">
+      <feDropShadow dx="0" dy="7" stdDeviation="10" flood-color="#020617" flood-opacity=".45"/>
+    </filter>
+    <style>
+      .label { font-family: Arial, Helvetica, sans-serif; fill: #f1f5f9; font-size: 21px; font-weight: 700; }
+      .description { font-family: Arial, Helvetica, sans-serif; fill: #a8bdd1; font-size: 17px; }
+      .eyebrow { font-family: Arial, Helvetica, sans-serif; fill: #67e8f9; font-size: 16px; font-weight: 700; letter-spacing: 2px; }
+      .section { font-family: Arial, Helvetica, sans-serif; fill: #a7f3d0; font-size: 16px; font-weight: 700; letter-spacing: 2px; }
+      .pill { font-family: Arial, Helvetica, sans-serif; fill: #a8bdd1; font-size: 14px; font-weight: 700; letter-spacing: 1px; }
+      .card { fill: #101f34; stroke: #33516c; stroke-width: 1.5; }
+      .lineA { stroke: url(#mainStroke); stroke-width: 5; stroke-linecap: round; fill: none; }
+      .lineB { stroke: url(#liveStroke); stroke-width: 5; stroke-linecap: round; fill: none; }
+    </style>
+  </defs>
+  <rect width="1440" height="580" rx="28" fill="url(#back)"/>
+  <rect width="1440" height="580" rx="28" fill="url(#dots)"/>
+  <circle cx="1300" cy="10" r="260" fill="#22d3ee" opacity=".035"/>
+  <circle cx="90" cy="580" r="230" fill="#10b981" opacity=".035"/>
+
+  <text x="48" y="56" style="font:700 29px Arial,Helvetica,sans-serif;fill:#f8fafc">From conversation to follow-through</text>
+  <text x="48" y="86" class="description">Deterministic processing. Local state. Provisional realtime kept separate.</text>
+
+  <text x="48" y="139" class="eyebrow">01 / AUTHORITATIVE · PROCESSED BEE HISTORY</text>
+  <rect x="1113" y="113" width="279" height="34" rx="17" fill="#122e40" stroke="#23637c"/>
+  <text x="1252" y="135" class="pill" text-anchor="middle">CAN UPDATE LOCAL STATE</text>
+
+  <!-- Upper lane: each node remains readable without animations. -->
+  <g filter="url(#shadow)">
+    <rect x="48" y="168" width="240" height="132" rx="20" class="card"/>
+    <rect x="327" y="168" width="240" height="132" rx="20" class="card"/>
+    <rect x="606" y="168" width="240" height="132" rx="20" class="card"/>
+    <rect x="885" y="168" width="240" height="132" rx="20" class="card"/>
+    <rect x="1164" y="168" width="228" height="132" rx="20" class="card"/>
+  </g>
+
+  <!-- Static connectors and arrowheads are the nonanimated fallback. -->
+  <path class="lineA" d="M292 234 H319 M571 234 H598 M850 234 H877 M1129 234 H1156"/>
+  <path d="M313 227 L323 234 L313 241 M592 227 L602 234 L592 241 M871 227 L881 234 L871 241 M1150 227 L1160 234 L1150 241" stroke="#67e8f9" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Deliberately no CSS keyframe transforms on positioned groups. -->
+  <g transform="translate(67 189)">
+    <circle cx="24" cy="24" r="23" fill="#164e63"/>
+    <path d="M12 24 Q24 6 36 24 Q24 42 12 24 Z" fill="#67e8f9"/>
+    <circle cx="24" cy="24" r="6" fill="#e0faff">
+      <animate attributeName="opacity" values=".5;1;.5" dur="2.6s" repeatCount="indefinite"/>
+    </circle>
+  </g>
+  <text x="128" y="219" class="label">Bee</text>
+  <text x="68" y="268" class="description">Processed history</text>
+
+  <g transform="translate(346 189)">
+    <circle cx="24" cy="24" r="23" fill="#17436d"/>
+    <path d="M13 14 H35 V34 H13 Z M18 10 H30" stroke="#7dd3fc" stroke-width="3" stroke-linejoin="round" fill="none"/>
+    <path d="M18 22 H30 M18 28 H27" stroke="#7dd3fc" stroke-width="2"/>
+  </g>
+  <text x="408" y="219" class="label">Bee Adapter</text>
+  <text x="347" y="268" class="description">Normalize + validate</text>
+
+  <g transform="translate(625 189)">
+    <circle cx="24" cy="24" r="23" fill="#342e70"/>
+    <circle cx="17" cy="18" r="4" fill="#c4b5fd"/>
+    <circle cx="33" cy="18" r="4" fill="#c4b5fd"/>
+    <circle cx="24" cy="33" r="4" fill="#c4b5fd"/>
+    <path d="M17 18 L33 18 L24 33 Z" fill="none" stroke="#a5b4fc" stroke-width="2"/>
+  </g>
+  <text x="687" y="219" class="label">Loop Engine</text>
+  <text x="626" y="268" class="description">Detect + correlate</text>
+
+  <g transform="translate(904 189)">
+    <circle cx="24" cy="24" r="23" fill="#115e55"/>
+    <ellipse cx="24" cy="16" rx="12" ry="5" fill="#99f6e4"/>
+    <path d="M12 16 V32 Q24 42 36 32 V16 M12 24 Q24 34 36 24" fill="none" stroke="#5eead4" stroke-width="3"/>
+  </g>
+  <text x="966" y="219" class="label">LoopStore</text>
+  <text x="905" y="268" class="description">Local SQLite state</text>
+
+  <g transform="translate(1183 189)">
+    <circle cx="24" cy="24" r="23" fill="#37416e"/>
+    <rect x="13" y="12" width="23" height="24" rx="3" fill="none" stroke="#a5b4fc" stroke-width="3"/>
+    <path d="M17 19 H32 M17 26 H29" stroke="#c7d2fe" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="1244" y="219" class="label">Review</text>
+  <text x="1184" y="268" class="description">Follow-through UI</text>
+
+  <!-- Upper lane animated signals travel only between nodes. -->
+  <g fill="#e0f2fe">
+    <circle r="5"><animateMotion dur="1.8s" repeatCount="indefinite" path="M292 234 H319"/></circle>
+    <circle r="5"><animateMotion dur="1.8s" begin="-0.4s" repeatCount="indefinite" path="M571 234 H598"/></circle>
+    <circle r="5"><animateMotion dur="1.8s" begin="-0.8s" repeatCount="indefinite" path="M850 234 H877"/></circle>
+    <circle r="5"><animateMotion dur="1.8s" begin="-1.2s" repeatCount="indefinite" path="M1129 234 H1156"/></circle>
+  </g>
+
+  <path d="M48 332 H1392" stroke="#28465e" stroke-dasharray="5 8" stroke-width="2"/>
+  <text x="48" y="379" class="section">02 / PROVISIONAL · BEE REALTIME</text>
+  <rect x="1143" y="353" width="249" height="34" rx="17" fill="#103a33" stroke="#18745e"/>
+  <text x="1267" y="375" class="pill" text-anchor="middle">MEMORY ONLY</text>
+
+  <g filter="url(#shadow)">
+    <rect x="48" y="407" width="310" height="128" rx="20" class="card"/>
+    <rect x="431" y="407" width="347" height="128" rx="20" class="card"/>
+    <rect x="852" y="407" width="322" height="128" rx="20" class="card"/>
+    <rect x="1213" y="407" width="179" height="128" rx="20" fill="#211b36" stroke="#6d477f" stroke-width="1.5"/>
+  </g>
+
+  <path class="lineB" d="M363 471 H423 M783 471 H844"/>
+  <path d="M418 464 L427 471 L418 478 M839 464 L848 471 L839 478" stroke="#5eead4" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <g transform="translate(67 429)">
+    <circle cx="24" cy="24" r="23" fill="#115e59"/>
+    <path d="M8 27 Q16 9 24 27 T40 27" fill="none" stroke="#99f6e4" stroke-width="4"/>
+    <animate attributeName="opacity" values=".7;1;.7" dur="2.8s" repeatCount="indefinite"/>
+  </g>
+  <text x="129" y="461" class="label">Bee Realtime</text>
+  <text x="68" y="504" class="description">Foreground signals</text>
+
+  <g transform="translate(450 429)">
+    <circle cx="24" cy="24" r="23" fill="#0f574a"/>
+    <path d="M12 24 L21 33 L37 16" stroke="#6ee7b7" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="513" y="461" class="label">Provisional Engine</text>
+  <text x="451" y="504" class="description">Bounded temporary awareness</text>
+
+  <g transform="translate(871 429)">
+    <circle cx="24" cy="24" r="23" fill="#164e63"/>
+    <path d="M14 13 H35 V35 H14 Z M19 20 H30 M19 27 H27" fill="none" stroke="#67e8f9" stroke-width="3" stroke-linecap="round"/>
+  </g>
+  <text x="933" y="461" class="label">PROVISIONAL UI</text>
+  <text x="872" y="504" class="description">Sanitized, temporary view</text>
+
+  <g transform="translate(1231 428)">
+    <circle cx="22" cy="22" r="22" fill="#642b57"/>
+    <path d="M10 10 L34 34 M34 10 L10 34" fill="none" stroke="#f0abfc" stroke-width="4" stroke-linecap="round"/>
+  </g>
+  <text x="1230" y="498" style="font:700 15px Arial,Helvetica,sans-serif;fill:#f5d0fe">NO DIRECT</text>
+  <text x="1230" y="519" style="font:700 15px Arial,Helvetica,sans-serif;fill:#f5d0fe">DB WRITES</text>
+
+  <!-- The realtime track ends before persistence: no outgoing connector. -->
+  <g fill="#99f6e4">
+    <circle r="5"><animateMotion dur="2.1s" repeatCount="indefinite" path="M363 471 H423"/></circle>
+    <circle r="5"><animateMotion dur="2.1s" begin="-1s" repeatCount="indefinite" path="M783 471 H844"/></circle>
+  </g>
+  <text x="48" y="566" style="font:14px Arial,Helvetica,sans-serif;fill:#96adc3">Realtime may prompt a separate authoritative history refresh; it never creates or mutates a persistent LoopThread directly.</text>
+</svg>

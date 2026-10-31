@@ -1,304 +1,371 @@
+<div align="center">
+
 # CueNexa Loop
 
-Bee remembers what happened. CueNexa Loop helps you understand what remains unfinished.
+### From conversations to commitments you can actually follow through on.
 
-CueNexa Loop is an open-source companion project for Amazon Bee. It
-ingests Bee-derived data, normalizes it into CueNexa Loop-owned domain
-contracts, and deterministically identifies individual commitments,
-decisions, delegations, follow-ups, and open questions before correlating
-strongly related items across conversations into snapshot-local Loops.
+**Open-source · Local-first · Built for Amazon Bee**
 
-## Status: Phase 4 ambient realtime awareness
+*Bee remembers what happened. CueNexa Loop helps you see what remains unfinished.*
 
-This repository implements **Phase 0** (Bee connectivity, normalization,
-privacy-safe local verification), **Phase 1A** (deterministic LoopItem
-detection), and **Phase 1B** (deterministic, stateless cross-conversation
-Loop correlation within one hydrated Bee snapshot), plus **Phase 2** local
-SQLite-backed follow-through state, change history, and deterministic attention.
-**Phase 3** adds local user controls, an actionable review, and a deduplicated
-local notification planner/ledger. **Phase 4** adds a foreground, ephemeral
-Bee realtime awareness layer that can show conservative provisional signals
-while preserving processed history as the only authority for persistent state.
-It adds no background daemon or cloud delivery.
+[![CI](https://github.com/mrdzyn/cuenexa-loop/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/mrdzyn/cuenexa-loop/actions/workflows/ci.yml)
+![Node](https://img.shields.io/badge/Node-%3E%3D22-339933?logo=node.js&logoColor=white)
+[![License: MIT](https://img.shields.io/badge/License-MIT-2563eb.svg)](LICENSE)
+![Privacy](https://img.shields.io/badge/Privacy-local--first-7c3aed)
+![Realtime](https://img.shields.io/badge/Realtime-memory--only-0f766e)
+![Contest](https://img.shields.io/badge/Contest-submitted-0ea5e9)
 
-```text
-Apple Watch
-    ↓
-Bee
-    ↓
-Bee CLI authenticated environment
-    ↓
-@beeai/cli/lib
-    ↓
-CueNexa Loop Bee Adapter
-    ↓
-Normalized Contracts
-    ↓
-Loop Detection Engine
-    ↓
-Structured Loop Items
-    ↓
-Anchors → Eligibility → Deterministic Score (0.90 threshold)
-    ↓
-Complete-Link Grouping → Timeline / Lifecycle / Title
-    ↓
-Structured Loops → Persistent Local Follow-Through (processed history only)
+[Try it](#try-it-in-minutes) ·
+[Architecture](#how-it-works) ·
+[Electron example](#working-electron-reference-app) ·
+[Privacy & security](#privacy-by-design) ·
+[Docs](#documentation)
 
-Bee realtime stream (foreground loops:watch only)
-    ↓
-Normalized Ephemeral Events → PROVISIONAL presentation
-    ↓
-Bounded authoritative refresh rejoins the processed-history path above
+</div>
+
+> [!NOTE]
+> **Amazon Developer Build, Ship, Shape Hackathon:** Submission complete; judging continues through **November 21, 2026**. Project posture: **HOLD-CONTEST-STABLE**. No new features or Phase 5 are authorized.
+
+> [!IMPORTANT]
+> **The core trust rule:** Only processed Bee history can reconcile persistent Loop state. Realtime observations appear as **PROVISIONAL**, stay memory-only, and cannot directly update the database.
+
+<p align="center">
+  <a href="docs/assets/cuenexa-animated-flow.svg">
+    <img src="docs/assets/cuenexa-animated-flow.svg" alt="CueNexa Loop architecture: processed Bee history flows through the adapter and deterministic engine into local SQLite and review; a separate Bee realtime lane displays only memory-only provisional signals, with no direct database writes." width="100%" />
+  </a>
+</p>
+
+<p align="center"><sub>Two independent flows · moving signals where supported · click to inspect at full size · readable as a static diagram</sub></p>
+
+## Try it in minutes
+
+Choose the path that fits what you want to verify. **The synthetic demo needs no Bee login or personal conversations.**
+
+| Just evaluating the project? | Integrating with your Bee account? |
+| --- | --- |
+| **Synthetic realtime demo** — see the provisional-to-authoritative handoff without private data. | **Local Bee workflow** — detect, correlate, sync, and review your own data through an authenticated Bee CLI. |
+| `npm ci` → `npm run build` → `npm run loops:realtime-demo` | Set up Bee below, then run `npm run loops:check`, `npm run loops:sync`, and `npm run loops:review`. |
+| [View the Phase 4 design](docs/AMBIENT-REALTIME-AWARENESS.md) | [Go to the quickstart](#quickstart) |
+
+**Want to see the desktop integration?** [Open the runnable Electron example](examples/electron-local-reference/README.md). It is a **reference application, not a packaged consumer desktop release**. The reference has [real Bee historical-sync acceptance](docs/audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md) and [realtime acceptance](docs/audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md) evidence; no private screenshots or transcripts are committed.
+
+## What CueNexa Loop does
+
+CueNexa Loop takes Bee-derived conversations, facts, and todos and finds unfinished commitments. It connects strongly related items across conversations using explainable deterministic rules, keeps only minimized local follow-through state, and provides an actionable review.
+
+| Capability | What it does |
+| --- | --- |
+| **Detect** | Finds commitments, decisions, delegations, follow-ups, deadlines, and open questions from Bee-derived data. |
+| **Correlate** | Groups strongly related items across conversations using deterministic high-confidence rules. |
+| **Persist locally** | Maintains minimized structural `LoopThread` state in local SQLite without storing raw Bee transcripts or evidence. |
+| **Prioritize** | Builds Due Now, Needs Attention, Waiting, Snoozed, and Recently Resolved review views. |
+| **Act** | Supports local acknowledgement, snooze, pin, dismiss, restore, history, and notification deduplication. |
+| **React in realtime** | Shows conservative `PROVISIONAL` signals from Bee realtime without making them persistence authority. |
+| **Embed** | Ships a working Electron integration reference with sanitized IPC and a hardened renderer boundary. |
+
+### At a glance
+
+| | |
+| --- | --- |
+| **Architecture** | Local-first, deterministic, provider-independent above the Bee adapter |
+| **Persistence** | Local SQLite, minimized derived structural state only |
+| **Realtime** | Foreground, provisional, bounded, memory-only |
+| **Cloud processing** | None added by CueNexa Loop |
+| **External LLM** | None |
+| **Telemetry / analytics** | None |
+| **Tests** | Synthetic fixtures only |
+| **Verified engineering baseline** | 56 test files / 465 tests passing, typecheck PASS, build PASS; dependency audit cleared in [PR #29](https://github.com/mrdzyn/cuenexa-loop/pull/29) |
+| **License** | MIT |
+
+## How it works
+
+```mermaid
+flowchart TB
+    subgraph A["AUTHORITATIVE · processed history"]
+      direction LR
+      B["Bee CLI / Bee Adapter"] --> C["Normalize"] --> D["Detect + correlate"] --> E[("Local LoopStore")] --> F["Review"]
+    end
+    subgraph R["PROVISIONAL · realtime, memory-only"]
+      direction LR
+      G["Bee realtime"] --> H["ProvisionalAwareness"] --> I["PROVISIONAL UI"]
+    end
+    classDef history fill:#123047,stroke:#38bdf8,color:#e0f2fe;
+    classDef temporary fill:#123b35,stroke:#34d399,color:#d1fae5;
+    class B,C,D,E,F history;
+    class G,H,I temporary;
 ```
 
-Phase 1 is a **deterministic, local-only heuristic engine — not an LLM**.
-Phase 1B correlation is in-memory and stateless between invocations; it
-does not claim persistent tracking across snapshots. Phase 1 includes no
-UI, AWS, Amazon Bedrock, Strands, AgentCore, database, production
-deployment, persistence of Bee data, or cloud/LLM processing. See
-[docs/PRIVACY.md](docs/PRIVACY.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
-and [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) for the reasoning
-behind those boundaries and exactly what the detection engine does and
-does not do.
+**There is intentionally no arrow from the realtime track to `LoopStore`.** Realtime hints may request a separate, bounded *authoritative historical refresh*, but provisional events never create or change persistent threads themselves.
 
-## Repository layout
+The authoritative path and realtime path are deliberately separate:
 
-This is an npm-workspaces monorepo:
+| Authoritative history | Provisional realtime |
+| --- | --- |
+| Processed Bee history | Bee realtime stream |
+| Deterministic detection/correlation | Conservative provisional signals |
+| May reconcile `LoopStore` | **Zero direct `LoopStore` writes** |
+| Drives durable review state | Drives temporary `PROVISIONAL` presentation |
+| Repairs realtime gaps | Best-effort acceleration only |
 
-- [packages/contracts](packages/contracts) — CueNexa Loop-owned domain
-  types (`LoopConversation`, `LoopFact`, `LoopTodo`, `Page<T>`, and clearly
-  named ephemeral realtime events),
-  independent of Bee's wire format, plus their [Zod](https://zod.dev)
-  schemas.
-- [packages/bee-adapter](packages/bee-adapter) — wraps the official
-  `@beeai/cli/lib` client and normalizes Bee's responses onto the
-  contracts above, including its supported SSE realtime stream. The only
-  package that knows Bee's response or event shapes.
-- [packages/loop-engine](packages/loop-engine) — Phase 1A detection plus
-  Phase 1B deterministic anchors, eligibility, scoring, complete-link
-  grouping, timeline, lifecycle, and title derivation. It has no Bee-
-  specific dependency, LLM, network access, or persistence. See
-  [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) and
-  [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md), plus Phase 4's
-  distinct, memory-only provisional awareness engine.
-- [packages/cli](packages/cli) — the CLI entrypoint: wires the adapter and
-  the detection engine to privacy-safe console presenters.
-- [packages/loop-store](packages/loop-store) — local-only SQLite state,
-  reconciliation events, retention, user preferences, deterministic attention,
-  review policy, and notification deduplication. It stores no Bee records or
-  raw LoopItem evidence.
+## Working Electron reference app
 
-## Prerequisites
+**[Explore the runnable Electron example →](examples/electron-local-reference/README.md)**
 
-- Node.js 22+ and npm.
-- The [Bee](https://bee.computer) app and a Bee account.
-- Bee Developer Mode enabled (tap the app version number five times in
-  Settings).
-- The [Bee CLI](https://docs.bee.computer/docs) (`@beeai/cli`), installed
-  and with an authenticated session (`bee login`).
+Source: [`examples/electron-local-reference/`](examples/electron-local-reference/)
+
+This working example integrates real Bee historical Sync and optional realtime Start/Stop using sanitized Main-to-renderer IPC. It is **not a production-packaged desktop app or a public npm SDK**.
+
+```text
+Bee processed history
+        ↓
+BeeAdapterClient
+        ↓
+detectLoopItems
+        ↓
+correlateLoopItems
+        ↓
+LoopStore.reconcile
+        ↓
+buildReviewModel
+        ↓
+sanitized IPC
+        ↓
+Electron Renderer
+```
+
+Optional realtime stays separate:
+
+```text
+Bee realtime
+        ↓
+BeeAdapterClient.subscribeRealtime()
+        ↓
+ProvisionalAwareness
+        ↓
+sanitized provisional DTO
+        ↓
+PROVISIONAL renderer section
+        ↓
+never persisted
+```
+
+### Electron security posture
+
+The reference uses:
+
+- `contextIsolation: true`
+- `nodeIntegration: false`
+- `sandbox: true`
+- `webSecurity: true`
+- no `webviewTag`
+- no arbitrary navigation or window creation
+- restrictive local CSP
+- no CDN, telemetry, analytics, or remote fonts
+- sanitized renderer DTOs only
+
+The renderer never receives direct Bee, SQLite, filesystem, raw transcript, evidence, authentication, or realtime UUID access.
+
+### Live acceptance
+
+| Acceptance | Result | Evidence |
+| --- | --- | --- |
+| **P4-R1A — authoritative historical path** | **PASS** | [Live acceptance record](docs/audit/P4-R1A-LIVE-ACCEPTANCE-2026-10-06.md) |
+| **P4-R1B — provisional realtime path** | **PASS** | [Live acceptance record](docs/audit/P4-R1B-LIVE-ACCEPTANCE-2026-10-07.md) |
+| **P4-R1C — developer docs / polish** | **MERGED** | [P4-R1 contract](docs/P4-R1-ELECTRON-LOCAL-REFERENCE.md) |
+
+The realtime acceptance directly verified that real Bee realtime produced sanitized provisional signals while causing **zero persistent thread/event changes** before authoritative processing. These are **recorded prior acceptance results**, not a claim that every later dependency change has been retested on all devices.
+
+## Privacy by design
+
+CueNexa Loop works close to highly personal conversational data, so data minimization is an architectural rule rather than a UI preference.
+
+| Boundary | CueNexa Loop behavior |
+| --- | --- |
+| Bee credentials | Remain managed by Bee tooling; CueNexa never implements or stores a Bee credential |
+| Raw transcripts / utterances | Processed in memory when required; never persisted by CueNexa |
+| Raw evidence / anchors | Never persisted |
+| Precise location | Never persisted or printed |
+| Realtime UUID mappings | Accepted only when Bee explicitly supplies both identifiers; memory-only |
+| Default CLI output | Structural and content-free |
+| `--include-content` | Explicit opt-in; redact before truncate |
+| Local database | Derived structural follow-through state only |
+| Cloud / external LLM | None |
+| Test data | Synthetic fixtures only |
+
+Read the full policies:
+
+- [Privacy model](docs/PRIVACY.md)
+- [Security architecture](docs/SECURITY.md)
+- [Security reporting policy](SECURITY.md)
 
 ## Quickstart
 
+### Prerequisites
+
+- Node.js 22+
+- npm
+- Bee desktop app and Bee account
+- Bee Developer Mode enabled
+- official `@beeai/cli` on `PATH`
+- authenticated Bee CLI session
+
+### 1. Authenticate Bee
+
 ```bash
-# 1. Authenticate the Bee CLI once (if you haven't already)
 npm install -g @beeai/cli
 bee login
-bee status   # confirms you're authenticated
+bee status
+```
 
-# 2. Install dependencies and build the workspace packages
-npm install
+CueNexa Loop does not run `bee login` for you and does not handle the underlying Bee credential.
+
+### 2. Install and build
+
+```bash
+npm ci
 npm run build
-
-# 3. Run CueNexa Loop's Phase 0 CLI
-npm start
 ```
 
-CueNexa Loop never runs `bee login` or a local Bee proxy for you, and never
-handles a Bee credential itself — it only asks the already-authenticated
-`bee` CLI (via `@beeai/cli/lib`) to fetch your recent conversations, facts,
-and todos, normalizes the result, and prints a report.
+### 3. Sync and review follow-through
 
-### Default output vs. `--include-content`
+```bash
+npm run loops:sync
+npm run loops:review
+```
 
-By default, `npm start` prints a **structural connectivity check only** —
-counts and status, never conversation content:
+### 4. Try the Electron reference
+
+```bash
+npm start --workspace @cuenexa-loop/electron-local-reference
+```
+
+For an **isolated QA run** (does not use the normal Electron database):
+
+```bash
+export CUENEXA_LOOP_ELECTRON_DB_PATH="$(mktemp -d)/electron-qa.sqlite"
+npm start --workspace @cuenexa-loop/electron-local-reference
+```
+
+> [!TIP]
+> Use `CUENEXA_LOOP_ELECTRON_DB_PATH`, **not** the CLI-only `CUENEXA_LOOP_DB_PATH`. On a fresh machine, the first Electron launch may need to download its runtime binary.
+
+## Core commands
+
+| Command | Purpose |
+| --- | --- |
+| `npm start` | Structural Bee connectivity check |
+| `npm run loops:check` | Detect LoopItems from a fully hydrated Bee snapshot |
+| `npm run loops:correlate` | Deterministically correlate high-confidence cross-conversation items |
+| `npm run loops:sync` | Reconcile authoritative processed history into local structural state |
+| `npm run loops:today` | Local deterministic attention view |
+| `npm run loops:review` | Actionable structural review |
+| `npm run loops:history` | Local structural event history |
+| `npm run loops:notifications` | Preview local notification candidates |
+| `npm run loops:notify` | Render + dedupe local notification delivery |
+| `npm run loops:watch` | Foreground provisional realtime + authoritative refresh |
+| `npm run loops:realtime-demo` | Synthetic deterministic realtime handoff demo |
+| `npm run loops:reset -- --yes` | Explicitly erase CueNexa local state only |
+
+Local user-state actions are also available through `loops:ack`, `loops:snooze`, `loops:unsnooze`, `loops:pin`, `loops:unpin`, `loops:dismiss`, and `loops:restore`.
+
+### Content inspection is always explicit
+
+Default output is structural and does not print private conversational content.
+
+Use `--include-content` only when deliberately inspecting redacted/truncated content:
+
+```bash
+npm run loops:check -- --include-content
+npm run loops:correlate -- --include-content
+npm run loops:review -- --include-content
+npm run loops:watch -- --include-content
+```
+
+Redaction runs **before** truncation, and precise coordinates are never printed.
+
+## Local persistence
+
+The CLI database defaults to:
 
 ```text
-CueNexa Loop — Bee Connectivity Check
-
-Bee connection: OK
-Conversations: 5
-Facts: 12
-Todos: 3
-Normalization warnings: 0
-Normalization: OK
-Private content printed: NO
+~/.cuenexa-loop/cuenexa-loop.sqlite
 ```
 
-To deliberately inspect redacted, truncated content (summaries, fact/todo
-text, transcript utterances — never precise coordinates), opt in
-explicitly:
+Use `CUENEXA_LOOP_DB_PATH` to override it.
+
+The database stores minimized derived state such as thread IDs, hashed member identities, lifecycle, normalized due instants, structural events, bounded preferences, and notification delivery keys. It does **not** store Bee transcripts, summaries, raw LoopItem evidence, locations, people, credentials, or raw correlation anchors.
+
+The Electron reference uses a separate app-specific database under Electron `userData` and supports `CUENEXA_LOOP_ELECTRON_DB_PATH` for disposable testing.
+
+## Repository map
+
+| Path | Responsibility |
+| --- | --- |
+| [`packages/contracts`](packages/contracts) | Provider-independent domain contracts and Zod schemas |
+| [`packages/bee-adapter`](packages/bee-adapter) | The only Bee-specific integration boundary |
+| [`packages/loop-engine`](packages/loop-engine) | Deterministic detection, correlation, and provisional awareness |
+| [`packages/loop-store`](packages/loop-store) | Local SQLite persistence, reconciliation, attention, user state, notification ledger |
+| [`packages/cli`](packages/cli) | Commands, presenters, orchestration, foreground watch runtime |
+| [`examples/electron-local-reference`](examples/electron-local-reference) | Executable local Electron integration reference |
+
+## Quality gates
 
 ```bash
-npm start -- --include-content
+npm run typecheck
+npm test
+npm run build
+npm audit
 ```
 
-See [docs/PRIVACY.md](docs/PRIVACY.md) for exactly what each mode does and
-does not print.
+CI uses synthetic fixtures only. Real Bee acceptance is manual and never runs against personal data in GitHub Actions.
 
-### Loop detection
+## What this project is — and is not
 
-```bash
-npm run loops:check                    # structural counts only
-npm run loops:check -- --include-content  # redacted/truncated item text and evidence
-```
+CueNexa Loop is a **working, local-first engine and executable integration reference**. It does not claim to be a finished app-store desktop product. Detection and correlation use deterministic heuristics, not an LLM or a statistical probability model. A low-confidence potential match may deliberately remain ungrouped.
 
-### Proactive local follow-through (Phase 3)
+## Known limitations
 
-```bash
-npm run loops:sync                 # full bounded Bee history → local structural state
-npm run loops:today                # local deterministic attention, no Bee request
-npm run loops:today -- --include-content  # opt in to a short derived title
-npm run loops:review               # actionable structural review
-npm run loops:review -- --include-content # redacted derived titles
-npm run loops:ack -- <thread-id>
-npm run loops:snooze -- <thread-id> --for 2h
-npm run loops:unsnooze -- <thread-id>
-npm run loops:pin -- <thread-id>
-npm run loops:unpin -- <thread-id>
-npm run loops:dismiss -- <thread-id>
-npm run loops:restore -- <thread-id>
-npm run loops:notifications        # preview; does not record delivery
-npm run loops:notify               # local CLI render + dedupe record
-npm run loops:history              # local structural event history
-npm run loops:reset -- --yes       # erase only local CueNexa Loop state
-npm run loops:demo                 # sync, then local attention
-npm run loops:watch                # foreground provisional + authoritative watch
-npm run loops:watch -- --include-content # redacted/truncated ephemeral preview
-npm run loops:realtime-demo        # deterministic synthetic Phase 4 handoff demo
-```
-
-The database defaults to `~/.cuenexa-loop/cuenexa-loop.sqlite`; set
-`CUENEXA_LOOP_DB_PATH` for another local location. It stores only derived
-Loop state, normalized due instants, hashed member identities, snapshot IDs,
-structural events, bounded user preferences, and structural notification
-delivery keys. It never stores Bee transcripts, summaries, raw item
-text, evidence, locations, people, credentials, or raw anchors. See
-[docs/LOOP-PERSISTENCE.md](docs/LOOP-PERSISTENCE.md) and
-[docs/PROACTIVE-FOLLOW-THROUGH.md](docs/PROACTIVE-FOLLOW-THROUGH.md).
-
-`loops:watch` always performs an authoritative sync/review before subscribing
-to Bee realtime events. Realtime observations are labeled `PROVISIONAL`, live
-only in bounded process memory, and never create or mutate SQLite rows. Idle,
-processed-conversation, and realtime-gap hints can request the existing full
-historical path, rate-limited to one attempt per 60 seconds. The foreground
-runtime retries realtime at 1, 2, and 5 seconds, then stops; press `r` followed
-by Enter for an explicit rate-limited refresh. Hints received during cooldown
-or an in-flight refresh coalesce into one deferred attempt rather than being
-dropped. Realtime UUIDs match historical numeric conversation IDs only after
-Bee explicitly supplies both in one conversation event; that bounded bridge is
-memory-only. Existing commands remain independent. See
-[docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md).
-
-```text
-CueNexa Loop — Detection Check
-
-Bee connection: OK
-
-Conversations processed: 5
-Facts processed: 12
-Todos processed: 3
-
-Commitments: 4
-Decisions: 2
-Delegations: 1
-Follow-ups: 3
-Deadlines: 2
-Open questions: 1
-
-Total Loop items: 13
-
-Source warnings: 0
-Detection warnings: 0
-Detection completeness: COMPLETE
-Private content printed: NO
-```
-
-Same privacy split as `bee:check`: the default output never contains an
-item's text, owner, or evidence — see [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md).
-
-### Loop correlation
-
-```bash
-npm run loops:correlate                    # structural counts/status only
-npm run loops:correlate -- --include-content  # redacted/truncated Loop previews
-```
-
-The correlation command uses the same hydrated snapshot and Phase 1A
-detection path as `loops:check`, then correlates only high-confidence
-cross-conversation pairs. Default output contains counts, lifecycle totals,
-warning counts, completeness, and `Private content printed: NO`; it never
-reads Loop titles, member text, evidence, parties, due dates, locations, or
-raw anchors.
-
-Unlike `bee:check` (list-only, counts only), `loops:check` fetches each
-conversation's **full detail** (not just the list summary) so
-conversation-derived detection has real utterance text to work with — see
-[docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md#full-conversation-hydration-bee-check-vs-loops-check).
-If hydration or normalization degrades that source snapshot,
-`loops:check` reports a non-zero source-warning count and
-`Detection completeness: PARTIAL` without printing source content.
-Calendar phrases ("today", "tomorrow", weekday names) resolve against an
-explicit `LOOP_TIMEZONE` override if you set one, otherwise Bee's own
-account time zone when available, otherwise your local system time zone
-— never UTC by default.
-
-## Configuration
-
-| Env var          | Default | Purpose                                                              |
-| ----------------- | ------- | ---------------------------------------------------------------------- |
-| `LOOP_MAX_ITEMS`  | `5`     | Max conversations/facts/todos/Loop items printed per category in `--include-content` mode. |
-| `LOOP_TIMEZONE`   | (Bee's account time zone, else local system time zone) | IANA time zone override for resolving calendar phrases in `loops:check` and `loops:correlate`. |
-
-## Development
-
-```bash
-npm run typecheck   # tsc project references, no emit
-npm test            # vitest, against synthetic fixtures only
-npm run build        # compile all packages to dist/
-npm run bee:check    # live Bee connectivity check — see below
-npm run loops:check   # live Loop detection check — see below
-npm run loops:correlate # live snapshot-local Loop correlation check
-npm run loops:watch     # live foreground ambient awareness (manual only)
-```
-
-Tests never touch a real Bee account: every fixture under
-`packages/bee-adapter/src/fixtures` and `packages/loop-engine/src/fixtures`
-is synthetic, invented for this repository.
-
-### Live acceptance tests
-
-`npm run bee:check`, `npm run loops:check`, `npm run loops:correlate`, and
-`npm run loops:watch`
-build the project and run against your already-authenticated Bee session, in
-each command's default (non-`--include-content`) mode — i.e. they *are*
-the connectivity-check / detection-check outputs shown above, run for
-real. Run them yourself after `bee login`; CI never runs any of them (see
-[.github/workflows/ci.yml](.github/workflows/ci.yml) and
-[docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md)).
+- Bee processed-history availability may lag realtime; manual **Process now** may sometimes be useful during live testing.
+- Realtime is provisional, best-effort, and not persistence authority.
+- Bee realtime UUIDs and historical numeric conversation IDs are different namespaces; CueNexa does not guess mappings.
+- The Electron renderer starts without an in-memory review after restart until the next authoritative **Sync**.
+- Spoken time-of-day fidelity has one documented non-blocking integration case and remains backlog only during contest hold.
+- Workspace packages are private and are not published as a public npm SDK.
 
 ## Documentation
 
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — how the pieces fit together and why.
-- [docs/PRIVACY.md](docs/PRIVACY.md) — what data this touches, and what it deliberately never does.
-- [docs/SECURITY.md](docs/SECURITY.md) — trust boundaries, threat model, and reporting.
-- [docs/BEE_INTEGRATION.md](docs/BEE_INTEGRATION.md) — how the Bee adapter uses `@beeai/cli/lib`.
-- [docs/LOOP-DETECTION.md](docs/LOOP-DETECTION.md) — what Loop items are, detection philosophy, confidence, dedup, and limitations.
-- [docs/LOOP-CORRELATION.md](docs/LOOP-CORRELATION.md) — deterministic scoring, complete-link grouping, lifecycle, timeline, titles, and correlation privacy.
-- [docs/AMBIENT-REALTIME-AWARENESS.md](docs/AMBIENT-REALTIME-AWARENESS.md) — Phase 4's authoritative/provisional boundary and acceptance criteria.
-- [docs/APP-INTEGRATION-GUIDE.md](docs/APP-INTEGRATION-GUIDE.md) — application integration and testing guide for host applications.
-- [docs/FRICTION-LOG.md](docs/FRICTION-LOG.md) — structured friction notes for future contributors.
+| Guide | Purpose |
+| --- | --- |
+| [Architecture](docs/ARCHITECTURE.md) | System boundaries and design |
+| [Privacy](docs/PRIVACY.md) | Data handling and minimization |
+| [Security architecture](docs/SECURITY.md) | Trust boundaries and threat model |
+| [Security policy](SECURITY.md) | Vulnerability reporting |
+| [Bee integration](docs/BEE_INTEGRATION.md) | Official Bee adapter behavior |
+| [Loop detection](docs/LOOP-DETECTION.md) | Deterministic detection model |
+| [Loop correlation](docs/LOOP-CORRELATION.md) | Scoring, complete-link grouping, lifecycle |
+| [Persistence](docs/LOOP-PERSISTENCE.md) | Local structural state |
+| [Proactive follow-through](docs/PROACTIVE-FOLLOW-THROUGH.md) | Phase 3 behavior |
+| [Ambient realtime awareness](docs/AMBIENT-REALTIME-AWARENESS.md) | Phase 4 provisional/authoritative boundary |
+| [Application Integration Guide](docs/APP-INTEGRATION-GUIDE.md) | Host integration and testing |
+| [Electron reference README](examples/electron-local-reference/README.md) | Runnable desktop reference |
+| [Developer friction log](docs/DEVPOST-FRICTION-LOG.md) | Bee developer feedback |
+
+## Security reporting
+
+Found a potential vulnerability? Please **do not disclose exploit details in a public issue or pull request**.
+
+See [`SECURITY.md`](SECURITY.md) for private reporting guidance and privacy-safe reproduction requirements.
 
 ## License
 
-[MIT](LICENSE)
+CueNexa Loop is available under the [MIT License](LICENSE).
+
+---
+
+<div align="center">
+
+**CueNexa Loop**
+
+*Bee remembers what happened. CueNexa Loop remembers what is still unfinished.*
+
+</div>
