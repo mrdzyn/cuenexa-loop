@@ -60,7 +60,7 @@ CueNexa Loop is an open-source companion for Amazon Bee that turns conversationa
 | **External LLM** | None |
 | **Telemetry / analytics** | None |
 | **Tests** | Synthetic fixtures only |
-| **Current verified baseline** | 56 test files / 465 tests passing, typecheck PASS, build PASS, npm audit 0 vulnerabilities |
+| **Latest verified test baseline** | 56 test files / 465 tests passing, typecheck PASS, build PASS |
 | **License** | MIT |
 
 ## How it works
